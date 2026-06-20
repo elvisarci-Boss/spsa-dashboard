@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPSA – Dashboard de Seguimiento de Trabajos</title>
+<!-- Firebase SDK (modo compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<!-- EmailJS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1923; color: #e0e6ef; min-height: 100vh; }
+  
+  header { background: linear-gradient(135deg, #1a2744 0%, #0d3b6e 100%); padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #2563eb; flex-wrap: wrap; }
+  header h1 { font-size: 1.25rem; font-weight: 700; color: #fff; }
+  header span { font-size: 0.8rem; color: #94a3b8; }
+  
+  .topbar { background: #161f2e; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-bottom: 1px solid #1e3a5f; }
+  .topbar input, .topbar select { background: #0f1923; border: 1px solid #1e3a5f; color: #e0e6ef; padding: 7px 12px; border-radius: 6px; font-size: 0.85rem; }
+  .topbar input { width: 220px; }
+  .btn { padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: 0.2s; }
+  .btn-blue { background: #2563eb; color: #fff; }
+  .btn-blue:hover { background: #1d4ed8; }
+  .btn-green { background: #059669; color: #fff; }
+  .btn-green:hover { background: #047857; }
+  .btn-orange { background: #d97706; color: #fff; }
+  .btn-orange:hover { background: #b45309; }
+  .btn-red { background: #dc2626; color: #fff; }
+  .btn-red:hover { background: #b91c1c; }
+  .btn-gray { background: #334155; color: #e0e6ef; }
+  .btn-gray:hover { background: #475569; }
+  .btn-purple { background: #7c3aed; color: #fff; }
+  .btn-purple:hover { background: #6d28d9; }
+
+  .stats { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  .stat { background: #161f2e; border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 130px; border-left: 4px solid; }
+  .stat.total { border-color: #2563eb; }
+  .stat.pendiente { border-color: #d97706; }
+  .stat.proceso { border-color: #7c3aed; }
+  .stat.completado { border-color: #059669; }
+  .stat.vencido { border-color: #dc2626; }
+  .stat-num { font-size: 1.8rem; font-weight: 800; }
+  .stat-label { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+
+  .tabs { display: flex; gap: 0; padding: 0 24px; background: #161f2e; border-bottom: 1px solid #1e3a5f; flex-wrap: wrap; }
+  .tab { padding: 10px 20px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; transition: 0.2s; }
+  .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab:hover { color: #93c5fd; }
+
+  .content { padding: 16px 24px; }
+
+  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #1e3a5f; scrollbar-width: thin; scrollbar-color: #2563eb #1a2533; }
+  .table-wrap::-webkit-scrollbar { height: 12px; }
+  .table-wrap::-webkit-scrollbar-track { background: #1a2533; border-radius: 0 0 10px 10px; }
+  .table-wrap::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 6px; border: 2px solid #1a2533; }
+  .table-wrap::-webkit-scrollbar-thumb:hover { background: #1d4ed8; }
+  .table-scroll-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .scroll-arrow-btn { background:#161f2e; border:1px solid #1e3a5f; color:#93c5fd; width:34px; height:34px; border-radius:8px; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; transition:0.15s; }
+  .scroll-arrow-btn:hover { background:#1a2744; border-color:#2563eb; }
+  .scroll-hint { font-size:0.72rem; color:#64748b; }
+  #tbl { min-width: 1500px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { background: #1a2744; color: #94a3b8; padding: 10px 12px; text-align: left; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+  td { padding: 9px 12px; border-bottom: 1px solid #1a2533; white-space: nowrap; }
+  tr:hover td { background: #1a2533; }
+  tr.row-hoy td { background: #1a2744; }
+  tr.row-vence td { background: #2a1a1a; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; }
+  .badge-pendiente { background: #78350f; color: #fcd34d; }
+  .badge-proceso { background: #4c1d95; color: #c4b5fd; }
+  .badge-completado { background: #064e3b; color: #6ee7b7; }
+  .badge-vencido { background: #7f1d1d; color: #fca5a5; }
+  .badge-alta { background: #1e3a5f; color: #93c5fd; }
+  .badge-modif { background: #1a2744; color: #a5b4fc; }
+  .badge-sin { background: #1f2937; color: #6b7280; }
+
+  .dias-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 0.75rem; }
+  .dias-hoy { background: #854d0e; color: #fef08a; }
+  .dias-urgente { background: #7f1d1d; color: #fca5a5; }
+  .dias-pronto { background: #713f12; color: #fed7aa; }
+  .dias-normal { background: #1e3a5f; color: #93c5fd; }
+  .dias-pasado { background: #1f2937; color: #6b7280; }
+
+  select.estado-sel, select.tec-sel { background: #0f1923; border: 1px solid #1e3a5f; color: #e0e6ef; padding: 3px 6px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #161f2e; border: 1px solid #2563eb; border-radius: 12px; padding: 24px; width: 520px; max-width: 95vw; max-height: 85vh; overflow-y: auto; }
+  .modal h2 { font-size: 1rem; margin-bottom: 16px; color: #93c5fd; }
+  .modal-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .modal-field { flex: 1; min-width: 200px; }
+  .modal-field label { font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px; }
+  .modal-field input, .modal-field select, .modal-field textarea { width: 100%; background: #0f1923; border: 1px solid #1e3a5f; color: #e0e6ef; padding: 7px 10px; border-radius: 6px; font-size: 0.83rem; }
+  .modal-field textarea { height: 70px; resize: vertical; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .info-item { background: #0f1923; border-radius: 6px; padding: 8px 12px; }
+  .info-item .lbl { font-size: 0.7rem; color: #64748b; }
+  .info-item .val { font-size: 0.85rem; color: #e0e6ef; font-weight: 600; margin-top: 2px; }
+
+  .alert-section { margin-bottom: 20px; }
+  .alert-card { background: #161f2e; border-radius: 8px; border-left: 4px solid; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .alert-card.hoy { border-color: #d97706; }
+  .alert-card.manana { border-color: #7c3aed; }
+  .alert-card.pasado { border-color: #dc2626; }
+  .alert-oit { font-weight: 700; font-size: 0.9rem; }
+  .alert-info { font-size: 0.78rem; color: #94a3b8; margin-top: 2px; }
+  .alert-tag { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .tag-hoy { background: #78350f; color: #fcd34d; }
+  .tag-manana { background: #3b0764; color: #e9d5ff; }
+  .tag-pasado { background: #7f1d1d; color: #fca5a5; }
+
+  .sector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .sector-card { background: #161f2e; border-radius: 10px; border: 1px solid #1e3a5f; padding: 16px; }
+  .sector-card h3 { font-size: 1rem; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .progress-bar { height: 6px; background: #1a2533; border-radius: 3px; margin: 8px 0 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+  .sector-stats { display: flex; gap: 12px; font-size: 0.75rem; color: #94a3b8; flex-wrap:wrap; }
+
+  .notif-box { background: #161f2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 20px; }
+  .notif-box h3 { margin-bottom: 14px; font-size: 0.95rem; color: #93c5fd; }
+  .notif-box p { font-size: 0.82rem; color: #94a3b8; margin-bottom: 12px; line-height: 1.5; }
+  .notif-box .highlight { background: #0f1923; border-left: 3px solid #2563eb; padding: 10px 14px; border-radius: 4px; margin: 10px 0; font-size: 0.82rem; }
+
+  .empty { text-align: center; color: #64748b; padding: 40px; }
+
+  /* TECNICOS */
+  .tec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; margin-top: 16px; }
+  .tec-card { background: #161f2e; border-radius: 10px; padding: 16px; border-left: 4px solid; position: relative; }
+  .tec-card h3 { font-size: 1rem; margin-bottom: 4px; display:flex; align-items:center; gap:8px; }
+  .tec-dept { font-size: 0.72rem; color: #64748b; margin-bottom: 10px; }
+  .tec-contact { font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; }
+  .tec-stats-row { display: flex; gap: 14px; margin: 10px 0; font-size: 0.8rem; }
+  .tec-stat-num { font-size: 1.1rem; font-weight: 800; }
+  .tec-progress { height: 6px; background: #1a2533; border-radius: 3px; overflow: hidden; margin: 6px 0; }
+  .tec-progress-fill { height: 100%; background: #059669; }
+  .tec-actions { display:flex; gap:6px; margin-top: 10px; }
+
+  .add-tec-bar { background:#161f2e; border:1px solid #1e3a5f; border-radius: 10px; padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+  .add-tec-bar .field { flex: 1; min-width: 160px; }
+  .add-tec-bar label { font-size: 0.72rem; color: #94a3b8; display:block; margin-bottom: 4px; }
+  .add-tec-bar input, .add-tec-bar select { width: 100%; background: #0f1923; border: 1px solid #1e3a5f; color: #e0e6ef; padding: 7px 10px; border-radius: 6px; font-size: 0.83rem; }
+
+  .search-hl { background: #1d4ed8; color: #fff; border-radius: 2px; }
+
+  /* LOGIN */
+  #loginScreen { position:fixed; inset:0; background:#0f1923; z-index:500; display:flex; align-items:center; justify-content:center; }
+  .login-box { background:#161f2e; border:1px solid #1e3a5f; border-radius:14px; padding:36px 40px; width:380px; max-width:90vw; box-shadow:0 10px 40px rgba(0,0,0,0.4); }
+  .login-box h1 { font-size:1.1rem; color:#fff; text-align:center; margin-bottom:4px; }
+  .login-box .sub { font-size:0.78rem; color:#64748b; text-align:center; margin-bottom:24px; }
+  .login-field { margin-bottom:14px; }
+  .login-field label { font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:5px; }
+  .login-field input { width:100%; background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:10px 12px; border-radius:8px; font-size:0.88rem; }
+  .login-field input:focus { border-color:#2563eb; outline:none; }
+  .login-error { background:#2a1a1a; border:1px solid #7f1d1d; color:#fca5a5; padding:8px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:14px; display:none; }
+  .login-btn { width:100%; background:#2563eb; color:#fff; border:none; padding:11px; border-radius:8px; font-size:0.9rem; font-weight:700; cursor:pointer; }
+  .login-btn:hover { background:#1d4ed8; }
+  .login-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+  /* USER BADGE / ROLE */
+  .user-badge { display:flex; align-items:center; gap:8px; background:#161f2e; border:1px solid #1e3a5f; border-radius:20px; padding:5px 14px 5px 6px; font-size:0.78rem; }
+  .role-pill { font-size:0.65rem; font-weight:700; padding:1px 8px; border-radius:10px; }
+  .role-admin { background:#1e3a5f; color:#93c5fd; }
+  .role-supervisor { background:#3b0764; color:#e9d5ff; }
+  .role-lectura { background:#1f2937; color:#94a3b8; }
+
+  /* GESTION USUARIOS */
+  .users-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:14px; margin-top:16px; }
+  .user-card { background:#161f2e; border-radius:10px; padding:14px 16px; border-left:4px solid; }
+  .user-card .uc-name { font-weight:700; font-size:0.9rem; }
+  .user-card .uc-email { font-size:0.75rem; color:#64748b; margin:2px 0 8px; }
+
+  /* AUDITORIA */
+  .audit-row { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #1a2533; font-size:0.78rem; align-items:flex-start; }
+  .audit-row .a-time { color:#64748b; min-width:90px; font-size:0.7rem; }
+  .audit-row .a-user { color:#93c5fd; font-weight:700; min-width:110px; }
+  .audit-row .a-action { color:#cbd5e1; flex:1; }
+  .audit-row .a-role { font-size:0.62rem; padding:0 6px; border-radius:8px; }
+  /* ENTREGABLES */
+  .entregables-cell { min-width: 190px; }
+  .entregable-row { display:flex; align-items:center; gap:4px; flex-wrap:nowrap; margin-bottom:4px; }
+  .chk-btn { display:inline-flex; align-items:center; gap:2px; padding:2px 6px; border-radius:10px; font-size:0.68rem; font-weight:700; cursor:pointer; border:1.5px solid; transition:0.15s; user-select:none; white-space:nowrap; }
+  .chk-btn.off { background:#1a2533; border-color:#334155; color:#64748b; }
+  .chk-btn.on  { background:#064e3b; border-color:#059669; color:#6ee7b7; }
+  .chk-btn:hover { opacity:0.82; transform:scale(1.04); }
+  .prog-wrap { height:4px; background:#1a2533; border-radius:3px; overflow:hidden; }
+  .prog-bar  { height:100%; border-radius:3px; transition:width 0.3s; }
+  .prog-pct  { font-size:0.63rem; color:#64748b; margin-top:2px; }
+  /* GUIA DE ENVIO (numero guia + serie equipo) */
+  .guia-cell { min-width: 220px; }
+  .guia-block-label { font-size:0.6rem; color:#475569; font-weight:700; margin-bottom:1px; text-transform:uppercase; letter-spacing:0.02em; }
+  .guia-block { margin-bottom:6px; }
+  .guia-block:last-child { margin-bottom:0; }
+  .guia-row { display:flex; gap:6px; align-items:flex-end; }
+  .guia-field { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+  .guia-field label { font-size:0.6rem; color:#64748b; white-space:nowrap; }
+  .guia-input { background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:3px 6px; border-radius:4px; font-size:0.72rem; width:100%; min-width:0; }
+  .guia-input:focus { border-color:#2563eb; outline:none; }
+  .guia-input.filled { border-color:#059669; }
+  /* PROGRAMACIONES */
+  .prog-week-header { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+  .week-nav { display:flex; gap:6px; align-items:center; }
+  .week-label { font-size:0.88rem; font-weight:700; color:#93c5fd; min-width:200px; text-align:center; }
+  .week-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-bottom:20px; }
+  .day-col { background:#161f2e; border-radius:8px; border:1px solid #1e3a5f; overflow:hidden; min-height:120px; }
+  .day-col.today { border-color:#2563eb; }
+  .day-header { padding:6px 10px; font-size:0.75rem; font-weight:700; text-align:center; border-bottom:1px solid #1e3a5f; }
+  .day-header.today { background:#1a2744; color:#93c5fd; }
+  .day-header.weekend { color:#64748b; }
+  .day-body { padding:4px; display:flex; flex-direction:column; gap:3px; }
+  .week-card { background:#0f1923; border-radius:6px; padding:5px 7px; border-left:3px solid; font-size:0.7rem; cursor:pointer; transition:0.15s; }
+  .week-card:hover { opacity:0.85; background:#1a2533; }
+  .week-card .wc-oit { font-weight:700; color:#e0e6ef; font-size:0.72rem; }
+  .week-card .wc-dist { color:#64748b; font-size:0.65rem; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .week-card .wc-tec { color:#94a3b8; font-size:0.65rem; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wc-prog { height:3px; background:#1a2533; border-radius:2px; margin-top:3px; overflow:hidden; }
+  .wc-prog-fill { height:100%; border-radius:2px; }
+  .week-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .week-stat { background:#161f2e; border-radius:8px; padding:10px 16px; border-left:3px solid; flex:1; min-width:100px; }
+  .week-stat .ws-num { font-size:1.4rem; font-weight:800; }
+  .week-stat .ws-lbl { font-size:0.72rem; color:#94a3b8; }
+
+
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>🔐 SPSA Dashboard</h1>
+    <div class="sub">Inicia sesión para continuar</div>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-success" id="loginSuccess" style="display:none; background:#064e3b; border:1px solid #059669; color:#6ee7b7; padding:8px 12px; border-radius:6px; font-size:0.78rem; margin-bottom:14px;"></div>
+    <div class="login-field">
+      <label>Correo</label>
+      <input type="email" id="loginEmail" placeholder="tucorreo@empresa.com" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') hacerLogin()">
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="hacerLogin()">Ingresar</button>
+    <div style="text-align:center; margin-top:12px;">
+      <button type="button" onclick="recuperarPassword()" style="background:none; border:none; color:#60a5fa; font-size:0.78rem; cursor:pointer; text-decoration:underline;">¿Olvidaste tu contraseña?</button>
+    </div>
+    <div style="text-align:center; margin-top:10px; font-size:0.72rem; color:#475569;">¿No tienes acceso? Contacta al administrador del sistema.</div>
+  </div>
+</div>
+
+<div id="appContainer" style="display:none;">
+<header>
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#2563eb"/><path d="M8 18h20M18 8v20" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="18" cy="18" r="5" stroke="#fff" stroke-width="2"/></svg>
+  <div>
+    <h1>SPSA – Dashboard de Seguimiento (Cronograma de Visitas)</h1>
+    <span>Control de trabajos de campo + técnicos · 125 sedes · Jun–Jul 2026</span>
+    <div id="syncStatus" style="font-size:0.75rem; margin-top:2px; font-weight:700;">⚪ Iniciando...</div>
+  </div>
+  <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
+    <button class="btn btn-green" onclick="exportarCSV()">⬇ Exportar CSV</button>
+    <button class="btn btn-blue" onclick="document.getElementById('modalAlerta').classList.add('open')">🔔 Alertas</button>
+    <button class="btn btn-purple" onclick="document.getElementById('modalCompartir').classList.add('open')">🔗 Compartir</button>
+    <a href="monitor.html" target="_blank" class="btn btn-blue" style="text-decoration:none;">📊 Monitor</a>
+    <div class="user-badge" id="userBadge"></div>
+    <button class="btn btn-gray" onclick="cerrarSesion()">🚪 Salir</button>
+  </div>
+</header>
+
+<div class="topbar">
+  <input type="text" id="buscar" placeholder="🔍 Buscar OIT, distrito, cliente, técnico..." oninput="filtrar()">
+  <select id="filtDept" onchange="filtrar()">
+    <option value="">Todos los departamentos</option>
+    <option>Lima</option><option>Piura</option><option>La Libertad</option><option>Arequipa</option><option>Ica</option>
+  </select>
+  <select id="filtEstado" onchange="filtrar()">
+    <option value="">Todos los estados</option>
+    <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option>
+  </select>
+  <select id="filtTecnico" onchange="filtrar()">
+    <option value="">Todos los técnicos</option>
+  </select>
+  <select id="filtFecha" onchange="filtrar()">
+    <option value="">Todas las fechas</option>
+    <option value="hoy">Hoy</option>
+    <option value="semana">Esta semana</option>
+    <option value="mes">Este mes</option>
+    <option value="vencido">Vencidos</option>
+  </select>
+  <button class="btn btn-gray" onclick="limpiarFiltros()">✕ Limpiar</button>
+  <span style="margin-left:auto; font-size:0.8rem; color:#64748b;" id="contadorFiltro"></span>
+</div>
+
+<div class="stats" id="statsBar"></div>
+
+<div class="tabs">
+  <div class="tab active" onclick="setTab('tabla',this)">📋 Tabla de Trabajos</div>
+  <div class="tab" onclick="setTab('alertas',this)">🔔 Alertas Próximas</div>
+  <div class="tab" onclick="setTab('sectores',this)">🗺 Sectorización</div>
+  <div class="tab" onclick="setTab('tecnicos',this)">👤 Carga de Técnicos</div>
+  <div class="tab" onclick="setTab('notif',this)">📲 Notificaciones</div>
+  <div class="tab" onclick="setTab('programaciones',this)">📅 Programaciones</div>
+  <div class="tab" id="tabUsuariosBtn" onclick="setTab('usuarios',this)" style="display:none;">👥 Usuarios</div>
+</div>
+
+<div class="content">
+  <!-- TABLA -->
+  <div id="tab-tabla">
+    <div class="table-scroll-controls">
+      <button class="scroll-arrow-btn" onclick="scrollTabla(-300)" title="Desplazar a la izquierda">◀</button>
+      <span class="scroll-hint">↔ Desliza o usa las flechas para ver todas las columnas</span>
+      <button class="scroll-arrow-btn" onclick="scrollTabla(300)" title="Desplazar a la derecha">▶</button>
+    </div>
+    <div class="table-wrap" id="tablaWrapMain">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>N°</th><th>OIT</th><th>SFA</th><th>Cliente</th><th>Tipo OIT</th>
+            <th>Dirección</th><th>Distrito</th><th>Dpto.</th>
+            <th>Fecha Migr.</th><th>Horario</th><th>Días</th>
+            <th>Técnico</th><th>Estado</th><th>Entregables</th><th>Guía de Instalación</th><th>Guía de Desinstalación</th><th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ALERTAS -->
+  <div id="tab-alertas" style="display:none">
+    <div id="alertas-content"></div>
+  </div>
+
+  <!-- SECTORES -->
+  <div id="tab-sectores" style="display:none">
+    <div style="margin-bottom:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <span style="font-size:0.85rem; color:#94a3b8;">Sectores por departamento — colores KMZ</span>
+      <a href="SPSA_Cronograma_Sectorizacion.kmz" download style="margin-left:auto;" class="btn btn-blue">⬇ Descargar KMZ Google Earth</a>
+    </div>
+    <div class="sector-grid" id="sector-grid"></div>
+    <div style="margin-top:24px; background:#161f2e; border-radius:10px; padding:20px; border:1px solid #1e3a5f;">
+      <h3 style="margin-bottom:12px; font-size:0.95rem; color:#93c5fd;">📌 Cómo importar el KMZ a Google Earth</h3>
+      <ol style="font-size:0.82rem; color:#94a3b8; line-height:2; padding-left:20px;">
+        <li>Descarga el archivo <strong style="color:#e0e6ef;">SPSA_Cronograma_Sectorizacion.kmz</strong> con el botón arriba</li>
+        <li>Abre <strong style="color:#e0e6ef;">Google Earth Pro</strong> (gratis en earth.google.com/intl/es/download)</li>
+        <li>Ve a <strong style="color:#e0e6ef;">Archivo → Abrir</strong> y selecciona el archivo KMZ</li>
+        <li>Las 125 sedes aparecerán agrupadas en <strong style="color:#e0e6ef;">5 carpetas por departamento</strong>: Lima (rojo), Piura (verde), La Libertad (naranja), Arequipa (celeste), Ica (magenta)</li>
+        <li>Para guardar en "Mis Lugares": clic derecho en la carpeta → <strong style="color:#e0e6ef;">Guardar en Mis Lugares</strong></li>
+        <li>Para exportar de vuelta: clic derecho en la carpeta → <strong style="color:#e0e6ef;">Guardar lugar como → KMZ</strong></li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- TECNICOS -->
+  <div id="tab-tecnicos" style="display:none">
+    <div class="add-tec-bar" id="addTecBar">
+      <div class="field"><label>Nombre del técnico</label><input type="text" id="tecNombre" placeholder="Ej. Carlos Ramírez"></div>
+      <div class="field"><label>Celular (WhatsApp)</label><input type="text" id="tecCel" placeholder="+51 999 999 999"></div>
+      <div class="field"><label>Correo</label><input type="email" id="tecEmail" placeholder="correo@empresa.com"></div>
+      <div class="field"><label>Departamento asignado</label>
+        <select id="tecDept">
+          <option value="">General</option>
+          <option>Lima</option><option>Piura</option><option>La Libertad</option><option>Arequipa</option><option>Ica</option>
+        </select>
+      </div>
+      <button class="btn btn-green" onclick="agregarTecnico()" style="height:36px;">+ Agregar Técnico</button>
+    </div>
+    <div class="tec-grid" id="tec-grid"></div>
+  </div>
+
+  <!-- NOTIFICACIONES -->
+  <div id="tab-notif" style="display:none">
+
+    <!-- EMAILJS CONFIG BANNER -->
+    <div style="background:#1a2744; border:2px solid #2563eb; border-radius:10px; padding:18px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:260px;">
+        <div style="font-size:0.95rem; font-weight:700; color:#93c5fd; margin-bottom:6px;">⚡ Configuración de envíos automáticos</div>
+        <div style="font-size:0.78rem; color:#94a3b8;">Remitente: <strong style="color:#e0e6ef;">elvis.arci@gmail.com</strong> — EmailJS gratis · CallMeBot gratis</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <span id="emailjs-status" style="font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:20px; background:#1f2937; color:#64748b;">⚪ EmailJS no configurado</span>
+        <button class="btn btn-blue" onclick="document.getElementById('modalEmailJS').classList.add('open')">⚙️ Pegar claves EmailJS</button>
+        <button class="btn btn-gray" onclick="document.getElementById('modalGuiaEmailJS').classList.add('open')">📖 Guía EmailJS</button>
+      </div>
+    </div>
+
+    <!-- APPS SCRIPT CONFIG BANNER (Solicitud de Equipo) -->
+    <div style="background:#1a2e1a; border:2px solid #059669; border-radius:10px; padding:18px 24px; margin-bottom:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:260px;">
+        <div style="font-size:0.95rem; font-weight:700; color:#6ee7b7; margin-bottom:6px;">📑 Solicitud de Equipo automática (Excel adjunto)</div>
+        <div style="font-size:0.78rem; color:#94a3b8;">Al asignar técnico, se envía a logística/aarana/mcamasca + CC técnico con el Excel ya llenado.</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <span id="appsscript-status" style="font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:20px; background:#1f2937; color:#64748b;">⚪ Apps Script no configurado</span>
+        <button class="btn btn-green" onclick="document.getElementById('modalAppsScript').classList.add('open')">⚙️ Pegar URL Apps Script</button>
+        <button class="btn btn-gray" onclick="document.getElementById('modalGuiaAppsScript').classList.add('open')">📖 Guía de configuración</button>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1000px;">
+
+      <div class="notif-box">
+        <h3>📑 Solicitud de Equipo (Excel automático)</h3>
+        <p>Cuando asignas un técnico a una OIT, además del correo de notificación, el sistema genera tu plantilla <strong style="color:#e0e6ef;">"Solicitud de Equipo"</strong> con los datos llenados (OIT, fecha, técnico) y la envía como adjunto a:</p>
+        <div class="highlight">
+          📧 logistica@felosotec.com<br>
+          📧 aarana@felosotec.com<br>
+          📧 mcamasca@felosotec.com<br>
+          📋 CC: el técnico asignado (si tiene correo registrado)
+        </div>
+        <div style="margin-top:10px; font-size:0.8rem; color:#94a3b8;">Estado: <span id="appsscript-status2" style="font-weight:700; color:#64748b;"></span></div>
+      </div>
+
+      <div class="notif-box">
+        <h3>📧 Correo automático al asignar trabajo</h3>
+        <p>Cuando asignes un técnico, el sistema envía <strong style="color:#e0e6ef;">automáticamente</strong> un correo desde <strong style="color:#93c5fd;">elvis.arci@gmail.com</strong> con todos los detalles de la OIT.</p>
+        <div class="highlight">
+          <strong>El correo incluye:</strong><br>
+          📋 OIT, Cliente, Tipo de trabajo<br>
+          📍 Dirección completa + link a Google Maps<br>
+          📅 Fecha de migración y horario<br>
+          🔧 BW y Cambio CPE
+        </div>
+        <div style="margin-top:10px; font-size:0.8rem; color:#94a3b8;">Estado: <span id="emailjs-status2" style="font-weight:700; color:#64748b;">⚪ No configurado</span></div>
+      </div>
+
+      <div class="notif-box">
+        <h3>📱 WhatsApp automático al asignar trabajo</h3>
+        <p>Al asignar, el sistema envía el mensaje al WhatsApp del técnico via <strong style="color:#e0e6ef;">CallMeBot</strong> (gratis).</p>
+        <div class="highlight">
+          <strong>El técnico activa su WhatsApp así:</strong><br>
+          1. Guarda el número <strong>+34 644 51 69 90</strong> en contactos<br>
+          2. Le envía por WhatsApp: <code style="background:#1a2533; padding:2px 5px; border-radius:3px; font-size:0.75rem;">I allow callmebot to send me messages</code><br>
+          3. Recibe su API Key por WhatsApp<br>
+          4. Tú la registras en el perfil del técnico (campo "API Key WhatsApp")
+        </div>
+        <div style="margin-top:8px; font-size:0.78rem; color:#94a3b8;">Sin API Key: el botón 📤 abre WhatsApp Web con el mensaje prellenado.</div>
+      </div>
+
+      <div class="notif-box">
+        <h3>⏰ Resumen diario</h3>
+        <div style="display:flex; flex-direction:column; gap:8px; margin:12px 0;">
+          <label style="font-size:0.82rem; display:flex; align-items:center; gap:8px;"><input type="checkbox" checked> Alerta el mismo día del trabajo</label>
+          <label style="font-size:0.82rem; display:flex; align-items:center; gap:8px;"><input type="checkbox" checked> Alerta 1 día antes</label>
+          <label style="font-size:0.82rem; display:flex; align-items:center; gap:8px;"><input type="checkbox"> Alerta 3 días antes</label>
+        </div>
+        <button class="btn btn-orange" onclick="generarResumenEmail()">📄 Generar resumen de hoy</button>
+      </div>
+
+      <div class="notif-box">
+        <h3>🌐 Plataformas Complementarias</h3>
+        <div class="highlight"><strong>Trello (GRATIS):</strong> Tablero Kanban visual por técnico.</div>
+        <div class="highlight"><strong>Notion (GRATIS):</strong> Base de datos con vista de calendario.</div>
+        <div class="highlight"><strong>Google Sheets + Apps Script:</strong> Alertas automáticas por Gmail ilimitadas.</div>
+        <div class="highlight"><strong>Este dashboard + Firebase:</strong> Sincronización en tiempo real para todo el equipo.</div>
+      </div>
+    </div>
+
+    <div id="resumen-email" style="display:none; margin-top:20px; background:#0f1923; border:1px solid #1e3a5f; border-radius:8px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span style="font-size:0.85rem; color:#93c5fd; font-weight:700;">📧 Resumen generado</span>
+        <button class="btn btn-gray" onclick="copiarResumen()">📋 Copiar</button>
+      </div>
+      <pre id="resumen-texto" style="font-size:0.78rem; color:#e0e6ef; white-space:pre-wrap; line-height:1.6;"></pre>
+    </div>
+
+    <!-- HISTORIAL DE AUDITORIA (solo Administrador) -->
+    <div id="audit-section" style="display:none; margin-top:24px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+        <h3 style="font-size:0.95rem; color:#93c5fd;">📜 Historial de cambios de usuarios</h3>
+        <button class="btn btn-gray" style="margin-left:auto;" onclick="renderAuditoria()">🔄 Actualizar</button>
+      </div>
+      <div style="background:#161f2e; border:1px solid #1e3a5f; border-radius:10px; padding:6px 16px; max-height:420px; overflow-y:auto;" id="audit-list">
+        <div class="empty">Cargando historial...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROGRAMACIONES -->
+  <div id="tab-programaciones" style="display:none">
+    <div class="prog-week-header">
+      <div class="week-nav">
+        <button class="btn btn-gray" onclick="cambiarSemana(-1)">◀ Semana anterior</button>
+        <span class="week-label" id="week-label">...</span>
+        <button class="btn btn-gray" onclick="cambiarSemana(1)">Semana siguiente ▶</button>
+      </div>
+      <button class="btn btn-blue" onclick="irSemanaActual()">📅 Semana actual</button>
+      <div style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:#94a3b8; flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#2563eb;border-radius:2px;display:inline-block"></span>HOY</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#059669;border-radius:2px;display:inline-block"></span>Completado</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#d97706;border-radius:2px;display:inline-block"></span>En proceso</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#dc2626;border-radius:2px;display:inline-block"></span>Vencido</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#334155;border-radius:2px;display:inline-block"></span>Pendiente</span>
+      </div>
+    </div>
+    <div class="week-summary" id="week-summary"></div>
+    <div class="week-grid" id="week-grid"></div>
+    <div style="margin-top:20px;">
+      <h3 style="font-size:0.9rem; color:#93c5fd; margin-bottom:12px;">📋 Detalle de la semana</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Día</th><th>OIT</th><th>Distrito</th><th>Horario</th>
+              <th>Técnico</th><th>Estado</th><th>Entregables</th><th>Progreso</th>
+            </tr>
+          </thead>
+          <tbody id="week-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- USUARIOS (solo Administrador) -->
+  <div id="tab-usuarios" style="display:none">
+    <div class="add-tec-bar">
+      <div class="field"><label>Nombre completo</label><input type="text" id="usrNombre" placeholder="Ej. Carlos Ramírez"></div>
+      <div class="field"><label>Correo</label><input type="email" id="usrEmail" placeholder="correo@empresa.com"></div>
+      <div class="field"><label>Contraseña inicial</label><input type="text" id="usrPass" placeholder="Mínimo 6 caracteres"></div>
+      <div class="field"><label>Rol</label>
+        <select id="usrRol">
+          <option value="admin">Administrador</option>
+          <option value="supervisor" selected>Supervisor</option>
+          <option value="lectura">Solo lectura</option>
+        </select>
+      </div>
+      <button class="btn btn-green" onclick="crearUsuario()" style="height:36px;">+ Crear Usuario</button>
+    </div>
+    <div style="background:#161f2e; border:1px solid #1e3a5f; border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:0.78rem; color:#94a3b8;">
+      <strong style="color:#e0e6ef;">Permisos por rol:</strong><br>
+      🔵 <strong>Administrador</strong> — control total: editar todo, gestionar usuarios, ver historial de auditoría.<br>
+      🟣 <strong>Supervisor</strong> — puede cambiar estado, asignar técnicos, gestionar Carga de Técnicos (agregar/editar), y llenar Guía de Instalación / Guía de Desinstalación. No puede gestionar usuarios ni ver el historial de auditoría.<br>
+      ⚪ <strong>Solo lectura</strong> — puede ver todas las pestañas excepto Notificaciones (historial) y Usuarios; no puede editar ningún campo.
+    </div>
+    <div class="users-grid" id="users-grid"></div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE -->
+<div class="modal-bg" id="modalDetalle">
+  <div class="modal">
+    <h2 id="modal-title">Detalle del Trabajo</h2>
+    <div class="info-grid" id="modal-info"></div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">👤 Técnico asignado</label>
+      <select id="modal-tecnico" style="background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:7px 10px; border-radius:6px; font-size:0.83rem; width:100%;"></select>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📦 Entregables</label>
+      <div id="modal-entregables" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:4px;"></div>
+      <div style="background:#0f1923; border-radius:4px; padding:6px 10px; margin-top:4px;">
+        <div id="modal-entreg-bar" style="height:6px; background:#1a2533; border-radius:3px; overflow:hidden; margin-bottom:4px;"><div id="modal-entreg-fill" style="height:100%; border-radius:3px; transition:width 0.3s;"></div></div>
+        <span id="modal-entreg-pct" style="font-size:0.7rem; color:#94a3b8;"></span>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📦 Guía de Instalación</label>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label>N° Guía</label>
+          <input type="text" id="modal-guiaInst-numero" placeholder="Ej. G-001234">
+        </div>
+        <div class="modal-field">
+          <label>Serie del equipo</label>
+          <input type="text" id="modal-guiaInst-serie" placeholder="Ej. SN-XXXXXX">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📦 Guía de Desinstalación</label>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label>N° Guía</label>
+          <input type="text" id="modal-guiaDesinst-numero" placeholder="Ej. G-005678">
+        </div>
+        <div class="modal-field">
+          <label>Serie del equipo</label>
+          <input type="text" id="modal-guiaDesinst-serie" placeholder="Ej. SN-YYYYYY">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📝 Comentarios / Notas</label>
+      <textarea id="modal-notas" style="width:100%; background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:8px; border-radius:6px; font-size:0.83rem; height:80px; resize:vertical;"></textarea>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📊 Estado</label>
+      <select id="modal-estado" style="background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:7px 10px; border-radius:6px; font-size:0.83rem; width:100%;">
+        <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalDetalle')">Cancelar</button>
+      <button class="btn btn-green" onclick="guardarDetalle()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ALERTAS -->
+<div class="modal-bg" id="modalAlerta">
+  <div class="modal">
+    <h2>🔔 Resumen de Alertas</h2>
+    <div id="alertas-modal-content"></div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalAlerta')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOTIFICAR -->
+<div class="modal-bg" id="modalNotificar">
+  <div class="modal">
+    <h2>📤 Notificar al técnico</h2>
+    <div id="notificar-content"></div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalNotificar')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL COMPARTIR -->
+<div class="modal-bg" id="modalCompartir">
+  <div class="modal">
+    <h2>🔗 Compartir y sincronizar este Dashboard</h2>
+    <div style="font-size:0.83rem; color:#94a3b8; line-height:1.7;">
+      <p style="margin-bottom:10px;">Este dashboard está preparado para sincronización en tiempo real con <strong style="color:#e0e6ef;">Firebase Firestore</strong> (gratis). Mientras no configures Firebase, funciona en modo local (cada navegador guarda su copia, sin sincronizar).</p>
+      <div class="highlight" style="margin-bottom:10px;">
+        <strong>Estado actual:</strong> <span id="syncStatusModal">⚪ Modo local</span>
+      </div>
+      <div class="highlight" style="margin-bottom:10px;">
+        <strong>Para activar la sincronización en equipo:</strong><br>
+        1. Sigue la guía "GUIA_FIREBASE.md" incluida (crear proyecto gratis en Firebase, 10 min)<br>
+        2. Copia las 6 claves de tu proyecto y pégalas en este archivo .html, en el bloque <code>const firebaseConfig = {...}</code> al inicio del script<br>
+        3. Guarda el archivo y súbelo a un hosting (Firebase Hosting, GitHub Pages, Netlify) o compártelo por Drive<br>
+        4. Cada persona que abra el enlace verá los mismos datos, y los cambios de cualquiera se reflejan al instante en todos
+      </div>
+      <div class="highlight">
+        <strong>Plan gratuito de Firebase:</strong> hasta 50,000 lecturas y 20,000 escrituras por día — más que suficiente para un equipo de campo.
+      </div>
+      <div class="highlight" style="margin-top:10px;">
+        <strong>🔐 Acceso con usuario y contraseña:</strong><br>
+        Este dashboard ahora requiere iniciar sesión. Solo el <strong style="color:#93c5fd;">Administrador</strong> puede crear cuentas nuevas desde la pestaña "👥 Usuarios" y asignar el rol (Administrador, Supervisor o Solo lectura). Comparte el mismo enlace/archivo — cada persona ingresa con su propio correo y contraseña.
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalCompartir')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EMAILJS CONFIG -->
+<div class="modal-bg" id="modalEmailJS">
+  <div class="modal" style="width:560px;">
+    <h2>⚙️ Configurar EmailJS — Envío automático de correos</h2>
+    <p style="font-size:0.8rem; color:#94a3b8; margin-bottom:16px; line-height:1.6;">Pega aquí las 3 claves de tu cuenta EmailJS. Estas se guardan en tu navegador y no son visibles para otros. ¿No sabes cómo obtenerlas? <button style="background:none;border:none;color:#93c5fd;cursor:pointer;font-size:0.8rem;text-decoration:underline;" onclick="cerrarModal('modalEmailJS'); document.getElementById('modalGuiaEmailJS').classList.add('open')">Ver guía paso a paso →</button></p>
+    <div class="modal-row">
+      <div class="modal-field">
+        <label>Service ID <span style="color:#64748b; font-size:0.7rem;">(ej: service_xxxxxxx)</span></label>
+        <input type="text" id="ejs-sid" placeholder="service_xxxxxxx">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-field">
+        <label>Template ID <span style="color:#64748b; font-size:0.7rem;">(ej: template_xxxxxxx)</span></label>
+        <input type="text" id="ejs-tid" placeholder="template_xxxxxxx">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-field">
+        <label>Public Key <span style="color:#64748b; font-size:0.7rem;">(ej: XXXXXXXXXXXXXXXXXXXX)</span></label>
+        <input type="text" id="ejs-pk" placeholder="Tu Public Key de EmailJS">
+      </div>
+    </div>
+    <div style="background:#0f1923; border:1px solid #1e3a5f; border-radius:6px; padding:10px 14px; margin:12px 0; font-size:0.78rem; color:#94a3b8;">
+      <strong style="color:#e0e6ef;">Variables que usa la plantilla EmailJS:</strong><br>
+      <code style="font-size:0.72rem;">{{to_name}}</code> nombre técnico &nbsp;
+      <code style="font-size:0.72rem;">{{to_email}}</code> email técnico &nbsp;
+      <code style="font-size:0.72rem;">{{oit}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{cliente}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{direccion}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{fecha}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{horario}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{bw}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{cambio_cpe}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{maps_link}}</code> &nbsp;
+      <code style="font-size:0.72rem;">{{message}}</code> (texto completo)
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-red" onclick="limpiarEmailJS()" style="margin-right:auto;">🗑 Limpiar config</button>
+      <button class="btn btn-gray" onclick="cerrarModal('modalEmailJS')">Cancelar</button>
+      <button class="btn btn-green" onclick="guardarEmailJS()">💾 Guardar y activar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GUIA EMAILJS -->
+<div class="modal-bg" id="modalGuiaEmailJS">
+  <div class="modal" style="width:600px;">
+    <h2>📖 Guía: Configurar EmailJS en 10 minutos</h2>
+    <div style="font-size:0.82rem; color:#94a3b8; line-height:1.8; max-height:65vh; overflow-y:auto; padding-right:8px;">
+
+      <div style="background:#0f1923; border-left:3px solid #2563eb; padding:10px 14px; border-radius:4px; margin-bottom:14px;">
+        <strong style="color:#e0e6ef;">¿Qué hace EmailJS?</strong><br>
+        Permite que tu dashboard envíe correos <strong style="color:#93c5fd;">desde tu Gmail (elvis.arci@gmail.com)</strong> directamente al email del técnico, sin servidor, totalmente gratis (200 emails/mes).
+      </div>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 1 — Crear cuenta</strong><br>
+      1. Ve a <strong style="color:#93c5fd;">https://www.emailjs.com</strong> → clic en <em>"Sign Up Free"</em><br>
+      2. Regístrate con tu correo <strong>elvis.arci@gmail.com</strong><br>
+      3. Confirma el correo de verificación que te llegará<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 2 — Conectar tu Gmail</strong><br>
+      1. Dentro de EmailJS, ve a <em>"Email Services"</em> (menú izquierdo)<br>
+      2. Clic en <em>"Add New Service"</em><br>
+      3. Selecciona <strong>Gmail</strong><br>
+      4. Haz clic en <em>"Connect Account"</em> → inicia sesión con <strong>elvis.arci@gmail.com</strong> y autoriza el acceso<br>
+      5. Ponle un nombre al servicio, ej: <code style="background:#1a2533; padding:2px 5px; border-radius:3px;">spsa-gmail</code><br>
+      6. Clic en <em>"Create Service"</em><br>
+      7. Copia el <strong style="color:#fcd34d;">Service ID</strong> (algo como <code>service_abc1234</code>) → lo usarás en el Paso 4<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 3 — Crear la plantilla de correo</strong><br>
+      1. Ve a <em>"Email Templates"</em> → clic en <em>"Create New Template"</em><br>
+      2. En el campo <strong>Subject</strong> escribe:<br>
+      <div style="background:#0f1923; padding:8px 12px; border-radius:6px; margin:6px 0; font-family:monospace; font-size:0.78rem;">🔔 Nueva asignación OIT {{oit}} – {{distrito}}</div>
+      3. En el campo <strong>Content</strong> (clic en "Edit Content"), pega este texto:<br>
+      <div style="background:#0f1923; padding:8px 12px; border-radius:6px; margin:6px 0; font-family:monospace; font-size:0.75rem; white-space:pre-wrap;">Estimado/a {{to_name}},
+
+Se te ha asignado el siguiente trabajo de campo:
+
+━━━━━━━━━━━━━━━━━━━━━
+OIT: {{oit}} | SFA: {{sfa}}
+Cliente: {{cliente}}
+Tipo: {{tipo_oit}}
+━━━━━━━━━━━━━━━━━━━━━
+📍 Dirección: {{direccion}}
+   Distrito: {{distrito}}, {{departamento}}
+📅 Fecha: {{fecha}} ({{dias_txt}})
+⏰ Horario: {{horario}}
+🔧 BW: {{bw}} | CPE: {{cambio_cpe}}
+━━━━━━━━━━━━━━━━━━━━━
+🗺 Ver en mapa: {{maps_link}}
+━━━━━━━━━━━━━━━━━━━━━
+
+Saludos,
+elvis.arci@gmail.com
+SPSA Field Dashboard</div>
+      4. En el campo <strong>To Email</strong> escribe: <code style="background:#1a2533; padding:2px 5px; border-radius:3px;">{{to_email}}</code><br>
+      5. En el campo <strong>From Name</strong> escribe: <code style="background:#1a2533; padding:2px 5px; border-radius:3px;">SPSA Dashboard</code><br>
+      6. Clic en <em>"Save"</em><br>
+      7. Copia el <strong style="color:#fcd34d;">Template ID</strong> (algo como <code>template_xyz5678</code>) → lo usarás en el Paso 4<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 4 — Obtener tu Public Key</strong><br>
+      1. Ve a <em>"Account"</em> (ícono de persona arriba a la derecha, o menú izquierdo)<br>
+      2. Entra a la pestaña <em>"General"</em><br>
+      3. Copia el valor de <strong style="color:#fcd34d;">Public Key</strong> (algo como <code>AbCdEfGhIjKlMnOpQr</code>)<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 5 — Pegar las claves en el dashboard</strong><br>
+      1. Cierra esta guía<br>
+      2. Clic en <em>"⚙️ Pegar claves EmailJS"</em><br>
+      3. Pega los 3 valores: Service ID, Template ID, Public Key<br>
+      4. Clic en <em>"Guardar y activar"</em><br>
+      5. El indicador cambiará a <strong style="color:#6ee7b7;">🟢 EmailJS configurado</strong><br><br>
+
+      <div style="background:#064e3b; border-radius:6px; padding:10px 14px; margin-top:8px;">
+        ✅ <strong style="color:#6ee7b7;">¡Listo!</strong> Desde ahora, cada vez que asignes un técnico a un trabajo, el sistema enviará automáticamente el correo a su dirección de email.
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalGuiaEmailJS')">Cerrar</button>
+      <button class="btn btn-blue" onclick="cerrarModal('modalGuiaEmailJS'); document.getElementById('modalEmailJS').classList.add('open')">⚙️ Ir a configurar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL APPS SCRIPT CONFIG -->
+<div class="modal-bg" id="modalAppsScript">
+  <div class="modal" style="width:560px;">
+    <h2>⚙️ Configurar Google Apps Script — Solicitud de Equipo</h2>
+    <p style="font-size:0.8rem; color:#94a3b8; margin-bottom:16px; line-height:1.6;">Pega aquí la URL de tu Web App de Google Apps Script (la obtienes al publicar el script, ver guía). ¿No la tienes aún? <button style="background:none;border:none;color:#6ee7b7;cursor:pointer;font-size:0.8rem;text-decoration:underline;" onclick="cerrarModal('modalAppsScript'); document.getElementById('modalGuiaAppsScript').classList.add('open')">Ver guía paso a paso →</button></p>
+    <div class="modal-row">
+      <div class="modal-field">
+        <label>URL de la Web App</label>
+        <input type="text" id="asUrl" placeholder="https://script.google.com/macros/s/XXXXX/exec">
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-red" onclick="limpiarAppsScriptURL()" style="margin-right:auto;">🗑 Limpiar config</button>
+      <button class="btn btn-gray" onclick="cerrarModal('modalAppsScript')">Cancelar</button>
+      <button class="btn btn-green" onclick="guardarAppsScriptURL()">💾 Guardar y activar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GUIA APPS SCRIPT -->
+<div class="modal-bg" id="modalGuiaAppsScript">
+  <div class="modal" style="width:600px;">
+    <h2>📖 Guía: Publicar el Apps Script (10 minutos)</h2>
+    <div style="font-size:0.82rem; color:#94a3b8; line-height:1.8; max-height:65vh; overflow-y:auto; padding-right:8px;">
+      <div style="background:#0f1923; border-left:3px solid #059669; padding:10px 14px; border-radius:4px; margin-bottom:14px;">
+        <strong style="color:#e0e6ef;">¿Qué hace este script?</strong><br>
+        Toma tu plantilla "Solicitud de Equipo", llena el OIT, la fecha y el técnico, y envía un correo desde tu Gmail con el Excel adjunto a logística, aarana y mcamasca, con copia al técnico — gratis, sin límite de adjuntos.
+      </div>
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 1 — Crear el proyecto</strong><br>
+      1. Ve a <strong style="color:#6ee7b7;">https://script.google.com</strong> e inicia sesión con tu Gmail<br>
+      2. Clic en <em>"Nuevo proyecto"</em><br>
+      3. Borra el código de ejemplo que aparece<br>
+      4. Pega el contenido completo del archivo <strong style="color:#e0e6ef;">Code.gs</strong> que te entregamos<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 2 — Activar la API de Drive</strong><br>
+      1. En el editor, clic en el ícono <strong>+</strong> junto a "Servicios" (menú izquierdo)<br>
+      2. Busca <strong>"Drive API"</strong> → selecciónala → clic en "Agregar"<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 3 — Probar el script</strong><br>
+      1. Arriba, en el menú desplegable de funciones, selecciona <code style="background:#1a2533; padding:2px 5px; border-radius:3px;">testManual</code><br>
+      2. Clic en <em>"Ejecutar"</em><br>
+      3. La primera vez pedirá autorización: clic en "Revisar permisos" → elige tu cuenta → "Avanzado" → "Ir a [nombre del proyecto] (no seguro)" → "Permitir"<br>
+      4. Revisa tu Gmail — deberías recibir un correo de prueba con un Excel adjunto<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 4 — Publicar como Web App</strong><br>
+      1. Clic en <em>"Implementar"</em> (botón azul arriba a la derecha) → <em>"Nueva implementación"</em><br>
+      2. Clic en el ícono de engranaje ⚙️ junto a "Seleccionar tipo" → elige <strong>"Aplicación web"</strong><br>
+      3. En "Quién tiene acceso" selecciona <strong>"Cualquier usuario"</strong><br>
+      4. Clic en <em>"Implementar"</em><br>
+      5. Copia la <strong style="color:#6ee7b7;">URL de la aplicación web</strong> que aparece (termina en <code style="background:#1a2533; padding:2px 5px; border-radius:3px;">/exec</code>)<br><br>
+
+      <strong style="color:#e0e6ef; font-size:0.85rem;">PASO 5 — Pegar la URL en el dashboard</strong><br>
+      1. Cierra esta guía<br>
+      2. Clic en <em>"⚙️ Pegar URL Apps Script"</em><br>
+      3. Pega la URL copiada<br>
+      4. Clic en <em>"Guardar y activar"</em><br><br>
+
+      <div style="background:#064e3b; border-radius:6px; padding:10px 14px; margin-top:8px;">
+        ✅ <strong style="color:#6ee7b7;">¡Listo!</strong> Desde ahora, cada asignación de técnico generará y enviará automáticamente la Solicitud de Equipo en Excel.
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="cerrarModal('modalGuiaAppsScript')">Cerrar</button>
+      <button class="btn btn-green" onclick="cerrarModal('modalGuiaAppsScript'); document.getElementById('modalAppsScript').classList.add('open')">⚙️ Ir a configurar →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ==================== CONFIGURACION FIREBASE ====================
+// PASO 1: Reemplaza estos valores con los de tu proyecto Firebase (ver guía)
+const firebaseConfig = {
+  apiKey: "AIzaSyAOf8RZQgYUweOrCZ_vyNhiUqaXvMQNsB4",
+  authDomain: "spsa-dashboard.firebaseapp.com",
+  projectId: "spsa-dashboard",
+  storageBucket: "spsa-dashboard.firebasestorage.app",
+  messagingSenderId: "570004026052",
+  appId: "1:570004026052:web:1000319748a7d2c9a78f91"
+};
+// ==================================================================
+
+let db = null;
+let firebaseOK = false;
+let unsubData = null, unsubTec = null;
+
+function initFirebase() {
+  try {
+    if (firebaseConfig.apiKey === "TU_API_KEY" || !firebaseConfig.apiKey) {
+      console.warn("Firebase no configurado. Funcionando en modo local (localStorage).");
+      setSyncStatus('⚪ Modo local (sin sincronizar)', '#94a3b8');
+      return false;
+    }
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseOK = true;
+    setSyncStatus('🟢 Sincronizado en tiempo real', '#6ee7b7');
+    return true;
+  } catch(e) {
+    console.error("Error Firebase:", e);
+    setSyncStatus('🔴 Error de conexión (modo local)', '#fca5a5');
+    return false;
+  }
+}
+
+function setSyncStatus(text, color) {
+  const el1 = document.getElementById('syncStatus');
+  const el2 = document.getElementById('syncStatusModal');
+  if (el1) { el1.innerHTML = text; el1.style.color = color; }
+  if (el2) { el2.innerHTML = text; }
+}
+
+const DATA_RAW = [{"n": 1, "oit": "S479397", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. N Lte. 5 Pueblo Joven Villa El Salvador Sector 3", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.22117591, "lng": -76.93187143, "fecha": "2026-06-15", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 2, "oit": "S479360", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. A Lte. 9 Pueblo Joven Villa El Salvador Sector 3", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.21243246, "lng": -76.93459589, "fecha": "2026-06-15", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 3, "oit": "S479407", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Jorge Chávez Nro. S/N Mz. F Lte. 17 Grupo 4A Sector 6", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.21794387, "lng": -76.95077306, "fecha": "2026-06-16", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 4, "oit": "S479401", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. F Lte. 17 Pueblo Joven Villa El Salvador Sector 1", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.201471, "lng": -76.950357, "fecha": "2026-06-16", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 5, "oit": "S479386", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. N Lte. 4 Grupo 19 Sector 1", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.1985355, "lng": -76.95202097, "fecha": "2026-06-16", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 6, "oit": "S479345", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Pastor Sevilla Nro. S/N Mz. D Lte. 7 Coop. Virgen Cocharcas", "distrito": "Villa el Salvador", "provincia": "Lima", "departamento": "Lima", "lat": -12.194071, "lng": -76.960639, "fecha": "2026-06-16", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 7, "oit": "S479421", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Túpac Amaru de Villa Nro. S/N Mz. E5 Lte. 2", "distrito": "Chorrillos", "provincia": "Lima", "departamento": "Lima", "lat": -12.195521, "lng": -76.983578, "fecha": "2026-06-17", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 8, "oit": "S479422", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. 24 de Octubre Nro. S/N Urb. Túpac Amaru de Villa", "distrito": "Chorrillos", "provincia": "Lima", "departamento": "Lima", "lat": -12.196006, "lng": -76.983663, "fecha": "2026-06-17", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 9, "oit": "S479399", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. César Canevaro Nro. 460 Mz. G Lte. 15 Urb. San Juan Zona C", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.16404961, "lng": -76.96903564, "fecha": "2026-06-17", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 10, "oit": "S479394", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. IV Lte. 18 Urb. San Juan", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.166644, "lng": -76.974351, "fecha": "2026-06-17", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 11, "oit": "S480796", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. El Paraíso 192 Mz. U Lt. 2 A.H. El Paraíso", "distrito": "Villa Maria del Triunfo", "provincia": "Lima", "departamento": "Lima", "lat": -12.1472687, "lng": -76.9349224, "fecha": "2026-06-18", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 12, "oit": "S479373", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. José Carlos Mariátegui Nro. 878 Mz. D3 Lte. 4", "distrito": "Villa Maria del Triunfo", "provincia": "Lima", "departamento": "Lima", "lat": -12.15417368, "lng": -76.95222775, "fecha": "2026-06-18", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 13, "oit": "S479389", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. R3 Lte. 19 Pueblo Joven Pamplona Alta Sector Ollantay", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.13712302, "lng": -76.96304435, "fecha": "2026-06-18", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 14, "oit": "S479396", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. G2 Lte. 8 Parcela Juan A", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.15806913, "lng": -76.97335134, "fecha": "2026-06-18", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 15, "oit": "S479380", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Aguilar Segura Nro. S/N Mz. A Lte. 38 Pueblo Joven Juan Pablo II", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.157772, "lng": -76.984508, "fecha": "2026-06-19", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 16, "oit": "S479395", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. A Lte. 15 Coop. Héroes de San Juan Urb. San Juan", "distrito": "San Juan de Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.15498, "lng": -76.977321, "fecha": "2026-06-19", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 17, "oit": "S479379", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. A Lte. 1 Urb. Viña del Mar", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.156026, "lng": -77.01504707, "fecha": "2026-06-19", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 18, "oit": "S479413", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Corbeta La Unión Nro. S/N Mz. A Lte. 16 Urb. Cercado", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.14564831, "lng": -77.00759764, "fecha": "2026-06-19", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 19, "oit": "S479352", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Próceres Nro. S/N Mz. B Lte. 24 Urb. Honor y Lealtad", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.15896781, "lng": -76.98842908, "fecha": "2026-06-22", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 20, "oit": "S479390", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Las Nazarenas Nro. 289", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.13135079, "lng": -76.98730528, "fecha": "2026-06-22", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 21, "oit": "S479429", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Santiago de Surco Nro. 3503 Tienda 000002 Urb. Liguria Sector 4", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.133308, "lng": -76.997638, "fecha": "2026-06-22", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 22, "oit": "S479355", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Mariscal Ramón Castilla Nro. 1408", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.13684695, "lng": -77.00485681, "fecha": "2026-06-22", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 23, "oit": "S479436", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Recavarren Nro. 1164 Lte. 22", "distrito": "Surquillo", "provincia": "Lima", "departamento": "Lima", "lat": -12.10969227, "lng": -77.02446113, "fecha": "2026-06-23", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 24, "oit": "S480798", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. República de Panamá 5481", "distrito": "Surquillo", "provincia": "Lima", "departamento": "Lima", "lat": -12.1186252, "lng": -77.0184337, "fecha": "2026-06-23", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 25, "oit": "S479437", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Tomasal Nro. 145 Mz. 10C", "distrito": "Santiago de Surco", "provincia": "Lima", "departamento": "Lima", "lat": -12.10828468, "lng": -76.9690975, "fecha": "2026-06-23", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 26, "oit": "S479369", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Fresnos Nro. 2005 Mz. H2 Lte. 13 Urb. Portada del Sol Etapa 3", "distrito": "La Molina", "provincia": "Lima", "departamento": "Lima", "lat": -12.112648, "lng": -76.936799, "fecha": "2026-06-24", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 27, "oit": "S479424", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Alameda del Corregidor Nro. 1779 Urb. Las Viñas de La Molina", "distrito": "La Molina", "provincia": "Lima", "departamento": "Lima", "lat": -12.10102238, "lng": -76.94946242, "fecha": "2026-06-24", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 28, "oit": "S479366", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Quechuas Nro. S/N Mz. V Lte. 14 Urb. Olimpo Etapa Cuarta", "distrito": "Ate", "provincia": "Lima", "departamento": "Lima", "lat": -12.074741, "lng": -76.979467, "fecha": "2026-06-24", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 29, "oit": "S479419", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Aymaras Nro. 337", "distrito": "Ate", "provincia": "Lima", "departamento": "Lima", "lat": -12.0749062, "lng": -76.98843692, "fecha": "2026-06-24", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 30, "oit": "S479406", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. 2 Nro. S/N Mz. F2 Lte. 1 Urb. San Antonio de Carapongo", "distrito": "Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -12.002288, "lng": -76.872714, "fecha": "2026-06-25", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 31, "oit": "S479432", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Parque Cívico Santa Clara Nro. 286 Centro Comercial Qhatu Plaza", "distrito": "Ate", "provincia": "Lima", "departamento": "Lima", "lat": -12.01818434, "lng": -76.88379375, "fecha": "2026-06-25", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 32, "oit": "S479353", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. N Lte. 61 Urb. Tilda Zona 03", "distrito": "Ate", "provincia": "Lima", "departamento": "Lima", "lat": -12.03338572, "lng": -76.93859233, "fecha": "2026-06-25", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 33, "oit": "S479418", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. Las Dalias Nro. S/N Mz. Z Lte. 7 Asoc. Pro Vivienda Virgen del Carmen", "distrito": "Ate", "provincia": "Lima", "departamento": "Lima", "lat": -12.03748545, "lng": -76.92878899, "fecha": "2026-06-25", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 34, "oit": "S479375", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Separadora Industrial Nro. 3064", "distrito": "La Molina", "provincia": "Lima", "departamento": "Lima", "lat": -12.05833735, "lng": -76.94656073, "fecha": "2026-06-26", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 35, "oit": "S479367", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Constructores Nro. 1376 Mz. O Lte. 53", "distrito": "La Molina", "provincia": "Lima", "departamento": "Lima", "lat": -12.061265, "lng": -76.943025, "fecha": "2026-06-26", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 36, "oit": "S479356", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Chavín Nro. 398 Mz. M1 Lte. 16", "distrito": "Santa Anita", "provincia": "Lima", "departamento": "Lima", "lat": -12.03661269, "lng": -76.96756596, "fecha": "2026-06-26", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 37, "oit": "S479357", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Ruiseñores Nro. 388 Mz. R1 Lte. 28 Urb. Santa Anita", "distrito": "Santa Anita", "provincia": "Lima", "departamento": "Lima", "lat": -12.05228047, "lng": -76.96548326, "fecha": "2026-06-26", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 38, "oit": "S479354", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Madre Selva Nro. 184 Mz. O1 Lte. 36 Coop. Santa Rosa de Quives", "distrito": "Santa Anita", "provincia": "Lima", "departamento": "Lima", "lat": -12.05363294, "lng": -76.98069505, "fecha": "2026-06-29", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 39, "oit": "S479398", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Túpac Amaru Nro. 380 Mz. U2 Lte. 3", "distrito": "Santa Anita", "provincia": "Lima", "departamento": "Lima", "lat": -12.04497307, "lng": -76.9797208, "fecha": "2026-06-29", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 40, "oit": "S479381", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Algarrobos Nro. 518 Mz. I Lte. 10 Urb. Tayacaja", "distrito": "El Agustino", "provincia": "Lima", "departamento": "Lima", "lat": -12.03838, "lng": -76.992397, "fecha": "2026-06-29", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 41, "oit": "S479427", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. M Lte. 11 Pueblo Joven Cruz de Motupe", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -11.937909, "lng": -76.978187, "fecha": "2026-06-30", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 42, "oit": "S479346", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. República de Polonia Nro. 612 Urb. Canto Grande", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -11.97444462, "lng": -77.00252431, "fecha": "2026-06-30", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 43, "oit": "S479351", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. C Lte. 2 Urb. Canto Grande", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -11.97162, "lng": -77.006907, "fecha": "2026-06-30", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 44, "oit": "S479431", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. F Lte. 04 Urb. Santa Elizabeth Etapa 2DA", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -11.98422276, "lng": -77.01485711, "fecha": "2026-06-30", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 45, "oit": "S479425", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. 11 Nro. S/N Mz. O Lte. B-6", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -12.021971, "lng": -76.973687, "fecha": "2026-07-01", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 46, "oit": "S479348", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Las Coralinas Nro. 677 Coop. de Viviendas Las Flores", "distrito": "San Juan de Lurigancho", "provincia": "Lima", "departamento": "Lima", "lat": -12.009182, "lng": -77.011991, "fecha": "2026-07-01", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 47, "oit": "S479403", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Loreto Nro. 353 Urb. Chacra Colorada", "distrito": "Breña", "provincia": "Lima", "departamento": "Lima", "lat": -12.053326, "lng": -77.049098, "fecha": "2026-07-01", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 48, "oit": "S479426", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Pomabamba Nro. 201", "distrito": "Breña", "provincia": "Lima", "departamento": "Lima", "lat": -12.051956, "lng": -77.043536, "fecha": "2026-07-01", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 49, "oit": "S479382", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. General Borgoño Nro. 127", "distrito": "Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.11869362, "lng": -77.03359907, "fecha": "2026-07-02", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 50, "oit": "S480808", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Calle José Gonzales 488", "distrito": "Miraflores", "provincia": "Lima", "departamento": "Lima", "lat": -12.12863044, "lng": -77.03002735, "fecha": "2026-07-02", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 51, "oit": "S479402", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. del Ejército Nro. 915", "distrito": "Magdalena del Mar", "provincia": "Lima", "departamento": "Lima", "lat": -12.100319, "lng": -77.062317, "fecha": "2026-07-02", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 52, "oit": "S479435", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Mariscal Toribio Luzuriaga Nro. 558", "distrito": "Jesus Maria", "provincia": "Lima", "departamento": "Lima", "lat": -12.076299, "lng": -77.048422, "fecha": "2026-07-02", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 53, "oit": "S479374", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Mariano Pastor Sevilla Nro. 177", "distrito": "Pueblo Libre", "provincia": "Lima", "departamento": "Lima", "lat": -12.07339371, "lng": -77.06506665, "fecha": "2026-07-03", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 54, "oit": "S479409", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Antonio José de Sucre Nro. 1158", "distrito": "Pueblo Libre", "provincia": "Lima", "departamento": "Lima", "lat": -12.08245348, "lng": -77.06714247, "fecha": "2026-07-03", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 55, "oit": "S479420", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Juan Valer Nro. 721", "distrito": "Pueblo Libre", "provincia": "Lima", "departamento": "Lima", "lat": -12.077344, "lng": -77.074531, "fecha": "2026-07-03", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 56, "oit": "S479416", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Mariano Cornejo Nro. 1456 Mz. A Lte. 27 Urb. Las Brisas", "distrito": "Lima", "provincia": "Lima", "departamento": "Lima", "lat": -12.067528, "lng": -77.066722, "fecha": "2026-07-03", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 57, "oit": "S479412", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. B10 Lte. 7 Urb. Condevilla Señor y Valdiviezo Etapa Segunda", "distrito": "San Martin de Porres", "provincia": "Lima", "departamento": "Lima", "lat": -12.02566936, "lng": -77.07546222, "fecha": "2026-07-06", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 58, "oit": "S479414", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Próceres Nro. 266 Mz. E-8 Lte. 25 Urb. Señor de Condevilla II Sector 37", "distrito": "San Martin de Porres", "provincia": "Lima", "departamento": "Lima", "lat": -12.018098, "lng": -77.086351, "fecha": "2026-07-06", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 59, "oit": "S479365", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Angélica Gamarra de León Velarde Nro. S/N Mz. D Lte. 7 Urb. El Trébol", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -12.00600995, "lng": -77.07057646, "fecha": "2026-07-06", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 60, "oit": "S479408", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Manuel Gonzales Prada Nro. S/N Mz. B Lte. 11 Urb. Villa Los Ángeles", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.99454579, "lng": -77.06806904, "fecha": "2026-07-06", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 61, "oit": "S479370", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Las Palmeras Nro. 3888 Lte. 17 Urb. Las Palmeras Etapa I", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.98939702, "lng": -77.07175584, "fecha": "2026-07-07", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 62, "oit": "S479371", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Santiago Antúnez de Mayolo Nro. 1259 Urb. Covida Etapa I", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.995417, "lng": -77.078222, "fecha": "2026-07-07", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 63, "oit": "S479372", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. G Lte. 4 Asoc. Vivienda Señor de los Milagros", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.98676278, "lng": -77.08756761, "fecha": "2026-07-07", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 64, "oit": "S479364", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Carlos Izaguirre Nro. S/N Mz. J Lte. 6 Urb. Cajabamba", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.99187028, "lng": -77.08155273, "fecha": "2026-07-07", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 65, "oit": "S480824", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. Pacasmayo Mz. F Lt. 16 Urb. Philadelphia I", "distrito": "San Martin de Porres", "provincia": "Lima", "departamento": "Lima", "lat": -11.993006, "lng": -77.111978, "fecha": "2026-07-08", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 66, "oit": "S479404", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Alisos Nro. S/N Mz. R Lte. 40 Asent. Hum. Los Jazmines del Naranjal", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.9829747, "lng": -77.07891312, "fecha": "2026-07-08", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 67, "oit": "S479376", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Próceres de Huandoy Nro. S/N Mz. G3 Lte. 7", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.975216, "lng": -77.082778, "fecha": "2026-07-08", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 68, "oit": "S479411", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. El Naranjal Nro. 1746", "distrito": "San Martin de Porres", "provincia": "Lima", "departamento": "Lima", "lat": -11.973746, "lng": -77.087084, "fecha": "2026-07-08", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 69, "oit": "S479383", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Río Marañón Nro. S/N Mz. N Lte. 4 Urb. Villa del Norte", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.97224629, "lng": -77.07195792, "fecha": "2026-07-09", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 70, "oit": "S479387", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Universitaria Nro. S/N Mz. T Lte. 5", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.968249, "lng": -77.074588, "fecha": "2026-07-09", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 71, "oit": "S480812", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Calle 29 Mz. H2 Lt. 17 Alameda Villa Sol", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.96980941, "lng": -77.08086748, "fecha": "2026-07-09", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 72, "oit": "S479417", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. Inca Yupanqui Nro. 570", "distrito": "Independencia", "provincia": "Lima", "departamento": "Lima", "lat": -11.97784642, "lng": -77.04742098, "fecha": "2026-07-09", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 73, "oit": "S479378", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. 2 de Octubre Nro. S/N Mz. J Lte. 23 Urb. Santa Ana", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.94891613, "lng": -77.0801526, "fecha": "2026-07-10", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 74, "oit": "S479400", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. Once Nro. S/N Mz. BBB5 Lte. 9 Urb. Pro Sector 5", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -11.93548431, "lng": -77.07706652, "fecha": "2026-07-10", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 75, "oit": "S479392", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Jr. 8 Nro. 400 Mz. H Lte. 2 Urb. Carabayllo", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.96581182, "lng": -77.05982902, "fecha": "2026-07-10", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 76, "oit": "S479430", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Túpac Amaru Nro. 181 Mz. U-1 Lte. 2", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.97136832, "lng": -77.05776489, "fecha": "2026-07-10", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 77, "oit": "S479385", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Carabayllo Nro. 1784", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.94482812, "lng": -77.05268124, "fecha": "2026-07-13", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 78, "oit": "S479391", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Víctor A. Belaúnde Este Nro. 533 Pueblo Joven El Carmen Zona 3", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.94055199, "lng": -77.04442958, "fecha": "2026-07-13", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 79, "oit": "S479377", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Túpac Amaru Nro. 6496", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.93487623, "lng": -77.04720164, "fecha": "2026-07-13", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 80, "oit": "S479347", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. Las Ciruelas Nro. 110", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.91149006, "lng": -77.04639474, "fecha": "2026-07-13", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 81, "oit": "S479349", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Universitaria Norte Nro. 10655 Mz. P Lte. 8 Urb. San Felipe Zona 8", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.90025, "lng": -77.039861, "fecha": "2026-07-14", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 82, "oit": "S479350", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. San Felipe Nro. 641 Urb. San Felipe", "distrito": "Comas", "provincia": "Lima", "departamento": "Lima", "lat": -11.90248164, "lng": -77.03850451, "fecha": "2026-07-14", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 83, "oit": "S479384", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. José Carlos Mariátegui Nro. S/N Mz. V Lte. 18 Urb. Lucyana", "distrito": "Carabayllo", "provincia": "Lima", "departamento": "Lima", "lat": -11.89440728, "lng": -77.03226594, "fecha": "2026-07-14", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 84, "oit": "S479388", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Caudivilla Nro. S/N Mz. R1 Lte. 04", "distrito": "Carabayllo", "provincia": "Lima", "departamento": "Lima", "lat": -11.8876197, "lng": -77.03644535, "fecha": "2026-07-14", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 85, "oit": "S479433", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. D1 Lte. 6 Urb. Santo Domingo Etapa 5", "distrito": "Carabayllo", "provincia": "Lima", "departamento": "Lima", "lat": -11.881981, "lng": -77.032828, "fecha": "2026-07-14", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 86, "oit": "S479363", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Ugarteche Nro. S/N Mz. B1 Lte. 28 Asoc. Santa Rosa", "distrito": "Ventanilla", "provincia": "Callao", "departamento": "Lima", "lat": -11.868094, "lng": -77.113213, "fecha": "2026-07-15", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 87, "oit": "S480811", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. San Judas Tadeo Mz. D Lt. 23", "distrito": "Puente Piedra", "provincia": "Lima", "departamento": "Lima", "lat": -11.83483729, "lng": -77.10863752, "fecha": "2026-07-15", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 88, "oit": "S480823", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. Buenos Aires 1655 Mz. L Lt. 28", "distrito": "Puente Piedra", "provincia": "Lima", "departamento": "Lima", "lat": -11.8537784, "lng": -77.0894214, "fecha": "2026-07-15", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 89, "oit": "S479428", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Famesa Nro. S/N Mz. B Lte. 13 Asoc. Tambo Inga", "distrito": "Puente Piedra", "provincia": "Lima", "departamento": "Lima", "lat": -11.88533941, "lng": -77.07013082, "fecha": "2026-07-16", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 90, "oit": "S479361", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. C1 Lte. 16 Urb. Los Portales de Chillon", "distrito": "Puente Piedra", "provincia": "Lima", "departamento": "Lima", "lat": -11.93543355, "lng": -77.08343045, "fecha": "2026-07-16", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 91, "oit": "S479393", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "C. Las Flores Nro. S/N Mz. D Lte. 01 Parcela Semi Rústica Shangrila", "distrito": "Puente Piedra", "provincia": "Lima", "departamento": "Lima", "lat": -11.91618592, "lng": -77.07822683, "fecha": "2026-07-16", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 92, "oit": "S479358", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. F Lte. 31 Asoc. Vivienda Brisas de Santa Rosa Urb. Brisas de Santa Rosa", "distrito": "Callao", "provincia": "Callao", "departamento": "Lima", "lat": -11.99015479, "lng": -77.10694727, "fecha": "2026-07-17", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 93, "oit": "S479410", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Asoc. de Viv. Trabajadores del Puerto del Callao Alamo 1", "distrito": "Callao", "provincia": "Callao", "departamento": "Lima", "lat": -12.00128792, "lng": -77.1076598, "fecha": "2026-07-17", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 94, "oit": "S479362", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Mz. D Lte. 1 Urb. Los Nardos", "distrito": "Callao", "provincia": "Callao", "departamento": "Lima", "lat": -12.0053069, "lng": -77.09929281, "fecha": "2026-07-17", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 95, "oit": "S479434", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. 01 Nro. 4676 Mz. E Lte. 42 Urb. El Bolívar", "distrito": "Callao", "provincia": "Callao", "departamento": "Lima", "lat": -12.020888, "lng": -77.09492, "fecha": "2026-07-17", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 96, "oit": "S479368", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. 1 Nro. 1213 Mz. P2 Lte. 18", "distrito": "Bellavista", "provincia": "Callao", "departamento": "Lima", "lat": -12.061188, "lng": -77.105059, "fecha": "2026-07-20", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 97, "oit": "S479359", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Julio C. Tello Nro. 209", "distrito": "Carmen de la Legua Reynoso", "provincia": "Callao", "departamento": "Lima", "lat": -12.04200223, "lng": -77.09690954, "fecha": "2026-07-20", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 98, "oit": "S480817", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Francisco Vidal 632", "distrito": "Supe", "provincia": "Barranca", "departamento": "Lima", "lat": -10.79661625, "lng": -77.71499626, "fecha": "2026-07-20", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 99, "oit": "S479415", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Carretera Antigua Panamericana Sur Nro. S/N Km 43", "distrito": "Punta Hermosa", "provincia": "Lima", "departamento": "Lima", "lat": -12.316723, "lng": -76.832416, "fecha": "2026-07-20", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 100, "oit": "S480826", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Jr. 28 de Julio 542 Mz. D1 Lt. 6", "distrito": "Imperial", "provincia": "Cañete", "departamento": "Lima", "lat": -13.061725, "lng": -76.351161, "fecha": "2026-07-21", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 101, "oit": "S479405", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. Los Alisos Nro. S/N Mz. P Lte. 22 Urb. Micaela Bastidas Etapa 1", "distrito": "Los Olivos", "provincia": "Lima", "departamento": "Lima", "lat": -12.15602388, "lng": -77.01504864, "fecha": "2026-07-21", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 102, "oit": "S480822", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Mz. C Lt. 6 Urb. Las Malvinas", "distrito": "Yanahuara", "provincia": "Arequipa", "departamento": "Arequipa", "lat": -16.3917109, "lng": -71.55397188, "fecha": "2026-07-21", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 103, "oit": "S479423", "sfa": "545834", "cliente": "SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.", "tipo_oit": "ALTA", "direccion": "Av. La Merced Nro. 113", "distrito": "Arequipa", "provincia": "Arequipa", "departamento": "Arequipa", "lat": -16.399463, "lng": -71.538078, "fecha": "2026-07-21", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 104, "oit": "S480818", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Arenales 127 Mz. A Sublote 01", "distrito": "Ica", "provincia": "Ica", "departamento": "Ica", "lat": -14.05960281, "lng": -75.73696608, "fecha": "2026-07-22", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 105, "oit": "S480825", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Calle Bolívar 640", "distrito": "Ica", "provincia": "Ica", "departamento": "Ica", "lat": -14.06857836, "lng": -75.72804717, "fecha": "2026-07-22", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 106, "oit": "S480803", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Obrera 1508 Mz. 39 Lt. 17", "distrito": "Alto Selva Alegre", "provincia": "Arequipa", "departamento": "Arequipa", "lat": -16.37479674, "lng": -71.51346294, "fecha": "2026-07-23", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 107, "oit": "S480821", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Pasaje Miguel Grau Mz. 38 Lt. 11", "distrito": "Paucarpata", "provincia": "Arequipa", "departamento": "Arequipa", "lat": -16.40831576, "lng": -71.48136062, "fecha": "2026-07-23", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 108, "oit": "S480797", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Prudencio Vidal Paz Soldán Lt. 204", "distrito": "La Joya", "provincia": "Arequipa", "departamento": "Arequipa", "lat": -16.42428718, "lng": -71.81869815, "fecha": "2026-07-23", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 109, "oit": "S480820", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Jr. María Parado de Bellido Mz. P Lt. 1", "distrito": "Mollendo", "provincia": "Islay", "departamento": "Arequipa", "lat": -17.02019883, "lng": -72.00514568, "fecha": "2026-07-23", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 110, "oit": "S480805", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Larco Herrera Víctor 608 Urb. San Andrés II", "distrito": "Trujillo", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.1202, "lng": -79.0352, "fecha": "2026-07-24", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 111, "oit": "S480810", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Mz. C Lt. 57 Urb. Las Flores del Golf II", "distrito": "Víctor Larco Herrera", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.13667, "lng": -79.03726, "fecha": "2026-07-24", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 112, "oit": "S480800", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. José G. Condorcanqui 1357 Mz. 9", "distrito": "La Esperanza", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.08034, "lng": -79.04587, "fecha": "2026-07-24", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 113, "oit": "S480799", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Mz. Q Lt. 42 Parque Industrial TEPRO", "distrito": "La Esperanza", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.07519, "lng": -79.05791, "fecha": "2026-07-24", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 114, "oit": "S480802", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Mz. 1 Lt. 2 Urb. El Milagro", "distrito": "Huanchaco", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.02201, "lng": -79.06541, "fecha": "2026-07-27", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 115, "oit": "S480809", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Mz. 30 Lt. 13 A.H. Wichanzao", "distrito": "La Esperanza", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.0559599, "lng": -79.051675, "fecha": "2026-07-27", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 116, "oit": "S480801", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Calle 9 de Octubre 712 Mz. 15 Lt. 11", "distrito": "Florencia de Mora", "provincia": "Trujillo", "departamento": "La Libertad", "lat": -8.079352836, "lng": -79.02167593, "fecha": "2026-07-27", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 117, "oit": "S480815", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Grau Mz. A8 Lt. 27", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.178027492, "lng": -80.68349608, "fecha": "2026-07-28", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 118, "oit": "S480804", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. San Martín 625 Mz. N2 Lt. 12", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.185044358, "lng": -80.67190336, "fecha": "2026-07-28", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 119, "oit": "S480806", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Chulucanas 243 Mz. J1 Lt. 8", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.185184686, "lng": -80.66486924, "fecha": "2026-07-28", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 120, "oit": "S480813", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. Grau 2343 Mz. A2 Lt. 28", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.187253414, "lng": -80.65141737, "fecha": "2026-07-28", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 121, "oit": "S480827", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Guillermo Gulman 836 Mz. B Lt. 16", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.195825574, "lng": -80.64109209, "fecha": "2026-07-29", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 122, "oit": "S480807", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Av. Gulman Mz. 1 Lt. 10 A.H. San Pedro", "distrito": "Piura", "provincia": "Piura", "departamento": "Piura", "lat": -5.20038341, "lng": -80.64395477, "fecha": "2026-07-29", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 123, "oit": "S480819", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. Progreso 1304 Mz. A Lt. 2", "distrito": "Castilla", "provincia": "Piura", "departamento": "Piura", "lat": -5.21184376, "lng": -80.62234783, "fecha": "2026-07-29", "horario": "08:30 - 12:30", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 124, "oit": "S480814", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "ALTA", "direccion": "Av. Guardia Civil Mz. M Lt. 6", "distrito": "Castilla", "provincia": "Piura", "departamento": "Piura", "lat": -5.187253414, "lng": -80.59301962, "fecha": "2026-07-29", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}, {"n": 125, "oit": "S480816", "sfa": "551870", "cliente": "COMPAÑIA HARD DISCOUNT S.A.C.", "tipo_oit": "MODIF", "direccion": "Jr. Apurímac 648 Sector III", "distrito": "Chulucanas", "provincia": "Morropón", "departamento": "Piura", "lat": -5.095192742, "lng": -80.1607523, "fecha": "2026-07-29", "horario": "13:00 - 17:00", "bw": "10 Mbps", "cambio_cpe": "FG-70G", "tecnico": "", "estado": "PENDIENTE"}];
+
+const TECNICOS_INICIAL = [
+  {id:'t1', nombre:'Carlos Ramírez', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t2', nombre:'Miguel Ángel Torres', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t3', nombre:'Juan Pérez', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t4', nombre:'Luis Fernández', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t5', nombre:'Roberto Sánchez', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t6', nombre:'Jorge Gómez', cel:'', email:'', depto:'', wa_key:''},
+  {id:'t7', nombre:'Pedro Castillo', cel:'', email:'', depto:'', wa_key:''}
+];
+
+const TEC_COLORS = ['#ef4444','#a855f7','#3b82f6','#22c55e','#f97316','#06b6d4','#ec4899','#eab308','#8b5cf6','#10b981'];
+
+// Estado local en memoria (se llena desde Firestore o localStorage)
+let DATA = DATA_RAW.map(d => ({...d, nota:'', entregables:{acta:false,guia:false,informe:false}, guiaInst:{numero:'',serie:''}, guiaDesinst:{numero:'',serie:''}}));
+let TECNICOS = JSON.parse(JSON.stringify(TECNICOS_INICIAL));
+
+// ==================== AUTENTICACIÓN Y ROLES ====================
+let auth = null;
+let currentUser = null;   // {uid, email}
+let currentRole = null;   // 'admin' | 'supervisor' | 'lectura'
+let currentNombre = '';
+let USUARIOS = []; // lista de perfiles (uid, email, nombre, rol) desde Firestore
+
+const ROLE_LABELS = {admin:'Administrador', supervisor:'Supervisor', lectura:'Solo lectura'};
+const ROLE_CLASS  = {admin:'role-admin', supervisor:'role-supervisor', lectura:'role-lectura'};
+
+function initAuth() {
+  if (!firebaseOK) {
+    // Sin Firebase configurado: modo local sin login (compatibilidad hacia atrás)
+    currentRole = 'admin';
+    currentNombre = 'Usuario local';
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appContainer').style.display = 'block';
+    aplicarPermisosUI();
+    initData();
+    updateEmailJSStatus();
+    updateAppsScriptStatus();
+    return;
+  }
+  auth = firebase.auth();
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      currentUser = user;
+      await cargarPerfilUsuario(user.uid, user.email);
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appContainer').style.display = 'block';
+      aplicarPermisosUI();
+      initData();
+      updateEmailJSStatus();
+      updateAppsScriptStatus();
+      cargarUsuarios();
+      registrarAuditoria('Inició sesión');
+    } else {
+      currentUser = null; currentRole = null;
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.getElementById('appContainer').style.display = 'none';
+    }
+  });
+}
+
+async function cargarPerfilUsuario(uid, email) {
+  try {
+    const doc = await db.collection('usuarios').doc(uid).get();
+    if (doc.exists) {
+      const d = doc.data();
+      currentRole = d.rol || 'lectura';
+      currentNombre = d.nombre || email;
+    } else if (email) {
+      // Primer login real (con correo) sin perfil creado: por seguridad, solo lectura.
+      // Las sesiones anónimas (sin email, usadas por el Monitor para leer datos) NUNCA generan perfil.
+      currentRole = 'lectura';
+      currentNombre = email;
+      await db.collection('usuarios').doc(uid).set({email, nombre: email, rol: 'lectura', creado: new Date().toISOString()});
+    } else {
+      currentRole = 'lectura';
+      currentNombre = 'Sesión anónima';
+    }
+  } catch(e) {
+    console.error('Error cargando perfil:', e);
+    currentRole = 'lectura';
+    currentNombre = email || 'Sesión anónima';
+  }
+}
+
+function hacerLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  errEl.style.display = 'none';
+  if (!email || !pass) { errEl.textContent = 'Completa correo y contraseña.'; errEl.style.display='block'; return; }
+  if (!firebaseOK) { errEl.textContent = 'Firebase no está configurado en este dashboard.'; errEl.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = 'Ingresando...';
+  firebase.auth().signInWithEmailAndPassword(email, pass)
+    .catch(err => {
+      let msg = 'Correo o contraseña incorrectos.';
+      if (err.code === 'auth/too-many-requests') msg = 'Demasiados intentos. Espera unos minutos.';
+      if (err.code === 'auth/user-disabled') msg = 'Esta cuenta está deshabilitada.';
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Ingresar'; });
+}
+
+function recuperarPassword() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const errEl = document.getElementById('loginError');
+  const okEl = document.getElementById('loginSuccess');
+  errEl.style.display = 'none';
+  okEl.style.display = 'none';
+  if (!email) {
+    errEl.textContent = 'Escribe tu correo arriba primero, luego haz clic en "¿Olvidaste tu contraseña?".';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!firebaseOK) {
+    errEl.textContent = 'Firebase no está configurado en este dashboard.';
+    errEl.style.display = 'block';
+    return;
+  }
+  firebase.auth().sendPasswordResetEmail(email)
+    .then(() => {
+      okEl.textContent = `✅ Te enviamos un correo a ${email} con instrucciones para restablecer tu contraseña. Revisa también la carpeta de spam.`;
+      okEl.style.display = 'block';
+    })
+    .catch(err => {
+      let msg = 'No se pudo enviar el correo de recuperación.';
+      if (err.code === 'auth/user-not-found') msg = 'No existe una cuenta con ese correo.';
+      if (err.code === 'auth/invalid-email') msg = 'El correo no tiene un formato válido.';
+      if (err.code === 'auth/too-many-requests') msg = 'Demasiados intentos. Espera unos minutos.';
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    });
+}
+
+function cerrarSesion() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  registrarAuditoria('Cerró sesión');
+  if (firebaseOK) firebase.auth().signOut();
+}
+
+// ---- Permisos por rol ----
+function esAdmin()       { return currentRole === 'admin'; }
+function esSupervisor()  { return currentRole === 'supervisor'; }
+function esLectura()     { return currentRole === 'lectura'; }
+function puedeEditarTrabajos()  { return esAdmin() || esSupervisor(); } // estado, técnico (supervisor limitado, ver toggleEstado/Tecnico)
+function puedeEditarGuias()     { return esAdmin() || esSupervisor(); }
+function puedeEditarEntregables(){ return esAdmin() || esSupervisor(); }
+function puedeGestionarTecnicos(){ return esAdmin() || esSupervisor(); }
+function puedeGestionarUsuarios(){ return esAdmin(); }
+function puedeVerAuditoria()    { return esAdmin(); }
+
+function aplicarPermisosUI() {
+  // Badge de usuario
+  document.getElementById('userBadge').innerHTML =
+    `👤 ${currentNombre} <span class="role-pill ${ROLE_CLASS[currentRole]}">${ROLE_LABELS[currentRole]}</span>`;
+
+  // Tab Usuarios — solo admin
+  document.getElementById('tabUsuariosBtn').style.display = puedeGestionarUsuarios() ? 'inline-block' : 'none';
+
+  // Historial de auditoría — solo admin
+  const auditSec = document.getElementById('audit-section');
+  if (auditSec) auditSec.style.display = puedeVerAuditoria() ? 'block' : 'none';
+
+  // Solo lectura: ocultar pestaña Notificaciones también (sin acceso a historial igualmente, pero el resto sí puede ver)
+  const notifTab = document.querySelector('[onclick*="setTab(\'notif\'"]');
+  if (notifTab) notifTab.style.display = esLectura() ? 'none' : '';
+
+  // Ocultar barra de agregar técnico si no tiene permiso
+  const addTecBar = document.getElementById('addTecBar');
+  if (addTecBar) addTecBar.style.display = puedeGestionarTecnicos() ? '' : 'none';
+}
+
+// ---- Registro de auditoría ----
+async function registrarAuditoria(accion, oit) {
+  if (!firebaseOK || !db || !currentUser) return;
+  try {
+    await db.collection('auditoria').add({
+      usuario: currentNombre,
+      email: currentUser.email,
+      rol: currentRole,
+      accion: accion,
+      oit: oit || null,
+      fecha: new Date().toISOString()
+    });
+  } catch(e) { console.error('Error registrando auditoría:', e); }
+}
+
+async function renderAuditoria() {
+  const cont = document.getElementById('audit-list');
+  if (!puedeVerAuditoria()) { cont.innerHTML = '<div class="empty">No tienes permiso para ver el historial.</div>'; return; }
+  if (!firebaseOK || !db) { cont.innerHTML = '<div class="empty">Firebase no configurado — historial no disponible.</div>'; return; }
+  cont.innerHTML = '<div class="empty">Cargando...</div>';
+  try {
+    const snap = await db.collection('auditoria').orderBy('fecha','desc').limit(150).get();
+    if (snap.empty) { cont.innerHTML = '<div class="empty">Sin registros todavía.</div>'; return; }
+    let html = '';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const fecha = new Date(d.fecha);
+      const fechaStr = fecha.toLocaleDateString('es-PE') + ' ' + fecha.toLocaleTimeString('es-PE', {hour:'2-digit',minute:'2-digit'});
+      const roleCls = ROLE_CLASS[d.rol] || 'role-lectura';
+      html += `<div class="audit-row">
+        <span class="a-time">${fechaStr}</span>
+        <span class="a-user">${d.usuario||d.email}</span>
+        <span class="a-action">${d.accion}${d.oit?` <span style="color:#64748b">(OIT ${d.oit})</span>`:''}</span>
+        <span class="a-role role-pill ${roleCls}">${ROLE_LABELS[d.rol]||d.rol}</span>
+      </div>`;
+    });
+    cont.innerHTML = html;
+  } catch(e) {
+    cont.innerHTML = `<div class="empty">Error cargando historial: ${e.message}</div>`;
+  }
+}
+
+// ---- Gestión de usuarios (solo Admin) ----
+async function cargarUsuarios() {
+  if (!firebaseOK || !db) return;
+  try {
+    const snap = await db.collection('usuarios').get();
+    USUARIOS = [];
+    snap.forEach(doc => USUARIOS.push({uid: doc.id, ...doc.data()}));
+    if (puedeGestionarUsuarios()) renderUsuarios();
+  } catch(e) { console.error('Error cargando usuarios:', e); }
+}
+
+function renderUsuarios() {
+  const cont = document.getElementById('users-grid');
+  if (!cont) return;
+  if (!USUARIOS.length) { cont.innerHTML = '<div class="empty">No hay usuarios registrados todavía.</div>'; return; }
+  const colorByRole = {admin:'#2563eb', supervisor:'#7c3aed', lectura:'#64748b'};
+  cont.innerHTML = USUARIOS.map(u => {
+    const esVacio = !u.email && !u.nombre;
+    const nombreMostrar = u.nombre || u.email || '(sin nombre — sesión sin perfil)';
+    const emailMostrar = u.email || '(sin correo registrado)';
+    return `
+    <div class="user-card" style="border-color:${colorByRole[u.rol]||'#64748b'}${esVacio?';opacity:0.7':''}">
+      <div class="uc-name">${nombreMostrar}</div>
+      <div class="uc-email">${emailMostrar}</div>
+      <span class="role-pill ${ROLE_CLASS[u.rol]||'role-lectura'}">${ROLE_LABELS[u.rol]||u.rol||'Sin rol'}</span>
+      <div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+        <select class="estado-sel" onchange="cambiarRolUsuario('${u.uid}', this.value)">
+          <option value="admin" ${u.rol==='admin'?'selected':''}>Administrador</option>
+          <option value="supervisor" ${u.rol==='supervisor'?'selected':''}>Supervisor</option>
+          <option value="lectura" ${u.rol==='lectura'?'selected':''}>Solo lectura</option>
+        </select>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:6px;">
+        <button class="btn btn-gray" style="padding:4px 10px;font-size:0.72rem;" onclick="editarUsuario('${u.uid}')">✏ Editar</button>
+        <button class="btn btn-red" style="padding:4px 10px;font-size:0.72rem;" onclick="eliminarUsuario('${u.uid}')">🗑 Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function editarUsuario(uid) {
+  if (!puedeGestionarUsuarios()) { alert('Solo el Administrador puede editar usuarios.'); return; }
+  const u = USUARIOS.find(x=>x.uid===uid);
+  if (!u) return;
+  const nuevoNombre = prompt('Nombre completo:', u.nombre || '');
+  if (nuevoNombre === null) return;
+  const nuevoEmail = prompt('Correo (referencial — no cambia las credenciales de acceso):', u.email || '');
+  if (nuevoEmail === null) return;
+  try {
+    await db.collection('usuarios').doc(uid).update({
+      nombre: nuevoNombre.trim() || u.nombre || '',
+      email: nuevoEmail.trim() || u.email || ''
+    });
+    registrarAuditoria(`Editó el perfil del usuario ${u.email || uid}`);
+    cargarUsuarios();
+  } catch(e) { alert('Error editando usuario: ' + e.message); }
+}
+
+async function eliminarUsuario(uid) {
+  if (!puedeGestionarUsuarios()) { alert('Solo el Administrador puede eliminar usuarios.'); return; }
+  if (uid === currentUser?.uid) { alert('No puedes eliminar tu propia cuenta mientras tienes la sesión activa.'); return; }
+  const u = USUARIOS.find(x=>x.uid===uid);
+  const etiqueta = u?.email || u?.nombre || uid;
+  if (!confirm(`¿Eliminar el perfil de "${etiqueta}"?\n\nEsto borra su perfil y permisos del sistema (colección "usuarios"). Si el usuario tiene una cuenta de acceso real (correo/contraseña), esa cuenta de autenticación NO se elimina desde aquí por seguridad — solo Firebase Console puede borrarla por completo.`)) return;
+  try {
+    await db.collection('usuarios').doc(uid).delete();
+    registrarAuditoria(`Eliminó el perfil del usuario ${etiqueta}`);
+    cargarUsuarios();
+  } catch(e) { alert('Error eliminando usuario: ' + e.message); }
+}
+
+async function crearUsuario() {
+  if (!puedeGestionarUsuarios()) { alert('Solo el Administrador puede crear usuarios.'); return; }
+  const nombre = document.getElementById('usrNombre').value.trim();
+  const email = document.getElementById('usrEmail').value.trim();
+  const pass = document.getElementById('usrPass').value;
+  const rol = document.getElementById('usrRol').value;
+  if (!nombre || !email || !pass) { alert('Completa todos los campos.'); return; }
+  if (pass.length < 6) { alert('La contraseña debe tener al menos 6 caracteres.'); return; }
+
+  try {
+    // Crear usuario secundario sin afectar la sesión del admin actual:
+    // usamos una app secundaria de Firebase solo para este alta.
+    const secondaryApp = firebase.apps.find(a=>a.name==='secondary') || firebase.initializeApp(firebaseConfig, 'secondary');
+    const secAuth = secondaryApp.auth();
+    const cred = await secAuth.createUserWithEmailAndPassword(email, pass);
+    const newUid = cred.user.uid;
+    await db.collection('usuarios').doc(newUid).set({
+      email, nombre, rol, creado: new Date().toISOString(), creadoPor: currentUser.email
+    });
+    await secAuth.signOut();
+    registrarAuditoria(`Creó usuario ${email} con rol ${ROLE_LABELS[rol]}`);
+    document.getElementById('usrNombre').value='';
+    document.getElementById('usrEmail').value='';
+    document.getElementById('usrPass').value='';
+    cargarUsuarios();
+    alert(`✅ Usuario ${email} creado correctamente con rol ${ROLE_LABELS[rol]}.`);
+  } catch(e) {
+    let msg = e.message;
+    if (e.code === 'auth/email-already-in-use') msg = 'Ese correo ya tiene una cuenta.';
+    if (e.code === 'auth/weak-password') msg = 'Contraseña muy débil (mínimo 6 caracteres).';
+    alert('Error creando usuario: ' + msg);
+  }
+}
+
+async function cambiarRolUsuario(uid, nuevoRol) {
+  if (!puedeGestionarUsuarios()) { alert('Solo el Administrador puede cambiar roles.'); return; }
+  try {
+    await db.collection('usuarios').doc(uid).update({rol: nuevoRol});
+    const u = USUARIOS.find(x=>x.uid===uid);
+    registrarAuditoria(`Cambió el rol de ${u?.email||uid} a ${ROLE_LABELS[nuevoRol]}`);
+    cargarUsuarios();
+  } catch(e) { alert('Error cambiando rol: ' + e.message); }
+}
+
+let filtrados = [...DATA];
+let editando = null;
+let firstLoadData = true, firstLoadTec = true;
+
+// Fecha actual en Perú (UTC-5) — sin depender del timezone del navegador
+const _ahora = new Date();
+const _peruDate = new Date(_ahora.toLocaleString('en-US', {timeZone: 'America/Lima'}));
+const TODAY = new Date(_peruDate.getFullYear(), _peruDate.getMonth(), _peruDate.getDate());
+
+// Devuelve fecha y hora actual de Perú en formato "DD/MM/YYYY HH:MM" para sellar comentarios/notas
+function peruFechaHoraStr() {
+  const ahora = new Date();
+  const lima = new Date(ahora.toLocaleString('en-US', {timeZone: 'America/Lima'}));
+  const dd = String(lima.getDate()).padStart(2,'0');
+  const mm = String(lima.getMonth()+1).padStart(2,'0');
+  const yyyy = lima.getFullYear();
+  const hh = String(lima.getHours()).padStart(2,'0');
+  const min = String(lima.getMinutes()).padStart(2,'0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+}
+
+function diasHasta(fechaStr) {
+  if (!fechaStr) return 9999;
+  // Parsear manualmente para evitar problemas UTC: '2026-06-15' → local midnight
+  const [y, m, d] = fechaStr.split('-').map(Number);
+  const f = new Date(y, m - 1, d); // Constructor local, sin UTC
+  return Math.round((f - TODAY) / 86400000);
+}
+
+function diasBadge(dias, estado) {
+  if (estado === 'COMPLETADO') return '<span class="dias-badge dias-pasado">✓</span>';
+  if (dias < 0) return `<span class="dias-badge dias-urgente">Hace ${Math.abs(dias)}d</span>`;
+  if (dias === 0) return `<span class="dias-badge dias-hoy">HOY</span>`;
+  if (dias <= 3) return `<span class="dias-badge dias-urgente">${dias}d</span>`;
+  if (dias <= 7) return `<span class="dias-badge dias-pronto">${dias}d</span>`;
+  return `<span class="dias-badge dias-normal">${dias}d</span>`;
+}
+
+// ==================== PERSISTENCIA (Firestore o localStorage) ====================
+
+// Cada OIT es un documento en la colección "trabajos"
+// Cada técnico es un documento en la colección "tecnicos"
+
+function loadLocal() {
+  const savedEstados = JSON.parse(localStorage.getItem('spsa_estados2')||'{}');
+  const savedTecAsig = JSON.parse(localStorage.getItem('spsa_tec_asig')||'{}');
+  const savedNotas = JSON.parse(localStorage.getItem('spsa_notas2')||'{}');
+  const savedEntreg = JSON.parse(localStorage.getItem('spsa_entregables')||'{}');
+  const savedGuiaInst = JSON.parse(localStorage.getItem('spsa_guia_inst')||'{}');
+  const savedGuiaDesinst = JSON.parse(localStorage.getItem('spsa_guia_desinst')||'{}');
+  TECNICOS = JSON.parse(localStorage.getItem('spsa_tecnicos')||'null') || JSON.parse(JSON.stringify(TECNICOS_INICIAL));
+  DATA = DATA_RAW.map(d => ({
+    ...d,
+    estado: savedEstados[d.oit]||d.estado,
+    tecnico: savedTecAsig[d.oit]!==undefined ? savedTecAsig[d.oit] : d.tecnico,
+    nota: savedNotas[d.oit]||'',
+    entregables: savedEntreg[d.oit]||{acta:false,guia:false,informe:false},
+    guiaInst: savedGuiaInst[d.oit]||{numero:'',serie:''},
+    guiaDesinst: savedGuiaDesinst[d.oit]||{numero:'',serie:''}
+  }));
+  renderFiltroTecnico();
+  filtrar();
+  renderAlertas();
+  renderTecnicos();
+}
+
+function saveTrabajoLocal(oit) {
+  const r = DATA.find(d=>d.oit===oit);
+  const estados = JSON.parse(localStorage.getItem('spsa_estados2')||'{}');
+  const tecs = JSON.parse(localStorage.getItem('spsa_tec_asig')||'{}');
+  const notas = JSON.parse(localStorage.getItem('spsa_notas2')||'{}');
+  estados[oit]=r.estado; tecs[oit]=r.tecnico; notas[oit]=r.nota||'';
+  localStorage.setItem('spsa_estados2', JSON.stringify(estados));
+  localStorage.setItem('spsa_tec_asig', JSON.stringify(tecs));
+  localStorage.setItem('spsa_notas2', JSON.stringify(notas));
+}
+
+function saveTecnicosLocal() {
+  localStorage.setItem('spsa_tecnicos', JSON.stringify(TECNICOS));
+}
+
+// ---- Funciones unificadas (usan Firestore si está disponible, sino localStorage) ----
+
+let dataListenersAttached = false;
+
+function initData() {
+  if (!firebaseOK) { loadLocal(); return; }
+  if (dataListenersAttached) { return; } // evita listeners duplicados si initData() se llama más de una vez
+  dataListenersAttached = true;
+
+  // Inicializar colección "trabajos" si está vacía (solo primera vez)
+  db.collection('trabajos').limit(1).get().then(snap => {
+    if (snap.empty) {
+      const batch = db.batch();
+      DATA_RAW.forEach(d => {
+        const ref = db.collection('trabajos').doc(d.oit);
+        batch.set(ref, {estado: d.estado, tecnico: d.tecnico||'', nota: ''});
+      });
+      batch.commit().then(()=>console.log('Trabajos inicializados en Firestore'));
+    }
+  });
+
+  db.collection('tecnicos').limit(1).get().then(snap => {
+    if (snap.empty) {
+      const batch = db.batch();
+      TECNICOS_INICIAL.forEach(t => {
+        const ref = db.collection('tecnicos').doc(t.id);
+        batch.set(ref, t);
+      });
+      batch.commit().then(()=>console.log('Técnicos inicializados en Firestore'));
+    }
+  });
+
+  // Listener en tiempo real para trabajos
+  unsubData = db.collection('trabajos').onSnapshot(snap => {
+    const overrides = {};
+    snap.forEach(doc => overrides[doc.id] = doc.data());
+    DATA = DATA_RAW.map(d => ({
+      ...d,
+      estado: overrides[d.oit]?.estado ?? d.estado,
+      tecnico: overrides[d.oit]?.tecnico ?? (d.tecnico||''),
+      nota: overrides[d.oit]?.nota ?? '',
+      entregables: overrides[d.oit]?.entregables ?? {acta:false,guia:false,informe:false},
+      guiaInst: overrides[d.oit]?.guiaInst ?? {numero:'',serie:''},
+      guiaDesinst: overrides[d.oit]?.guiaDesinst ?? {numero:'',serie:''}
+    }));
+    filtrar();
+    renderAlertas();
+    renderTecnicos();
+    if (firstLoadData) { renderFiltroTecnico(); firstLoadData=false; }
+  }, err => {
+    console.error('Error escuchando trabajos:', err);
+    setSyncStatus('🔴 Error de sincronización', '#fca5a5');
+  });
+
+  // Listener en tiempo real para técnicos
+  unsubTec = db.collection('tecnicos').onSnapshot(snap => {
+    const list = [];
+    snap.forEach(doc => list.push({id:doc.id, ...doc.data()}));
+    TECNICOS = list.length ? list : JSON.parse(JSON.stringify(TECNICOS_INICIAL));
+    renderFiltroTecnico();
+    renderTecnicos();
+    filtrar();
+  }, err => console.error('Error escuchando técnicos:', err));
+}
+
+function persistTrabajo(oit, fields) {
+  if (firebaseOK) {
+    db.collection('trabajos').doc(oit).set(fields, {merge:true})
+      .catch(e=>console.error('Error guardando:', e));
+  } else {
+    saveTrabajoLocal(oit);
+  }
+}
+
+function persistTecnicoDoc(t) {
+  if (firebaseOK) {
+    db.collection('tecnicos').doc(t.id).set(t)
+      .catch(e=>console.error('Error guardando técnico:', e));
+  } else {
+    saveTecnicosLocal();
+  }
+}
+
+function deleteTecnicoDoc(id) {
+  if (firebaseOK) {
+    db.collection('tecnicos').doc(id).delete()
+      .catch(e=>console.error('Error eliminando técnico:', e));
+  } else {
+    saveTecnicosLocal();
+  }
+}
+
+// ==================== RENDER ====================
+
+function estadoBadge(e) {
+  const m = {PENDIENTE:'badge-pendiente','EN PROCESO':'badge-proceso',COMPLETADO:'badge-completado',VENCIDO:'badge-vencido'};
+  return `<span class="badge ${m[e]||'badge-pendiente'}">${e}</span>`;
+}
+
+function tecnicoOptions(selected) {
+  let html = `<option value="">Sin asignar</option>`;
+  TECNICOS.forEach(t => {
+    html += `<option value="${t.nombre}" ${selected===t.nombre?'selected':''}>${t.nombre}</option>`;
+  });
+  return html;
+}
+
+function renderFiltroTecnico() {
+  const sel = document.getElementById('filtTecnico');
+  const current = sel.value;
+  sel.innerHTML = `<option value="">Todos los técnicos</option><option value="__SIN__">Sin asignar</option>` +
+    TECNICOS.map(t=>`<option value="${t.nombre}">${t.nombre}</option>`).join('');
+  sel.value = current;
+}
+
+// ===== ENTREGABLES =====
+const ENTREG_LABELS = {acta:'📄 Acta', guia:'📋 Guía', informe:'📊 Informe'};
+
+function renderEntregables(oit, e) {
+  e = e || {acta:false, guia:false, informe:false};
+  const done = [e.acta, e.guia, e.informe].filter(Boolean).length;
+  const pct = Math.round(done / 3 * 100);
+  const color = pct===100 ? '#059669' : pct>0 ? '#d97706' : '#334155';
+  const btns = Object.entries(ENTREG_LABELS).map(([k,v]) =>
+    `<span class="chk-btn ${e[k]?'on':'off'}" onclick="toggleEntregable('${oit}','${k}')" title="${e[k]?'Desmarcar':'Marcar entregado'}">${e[k]?'✓':''} ${v.split(' ')[1]}</span>`
+  ).join('');
+  return `<div class="entregable-row">${btns}<span style="font-size:0.63rem;color:${color};font-weight:700;margin-left:2px;">${pct}%</span></div>
+    <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${color}"></div></div>`;
+}
+
+function toggleEntregable(oit, key) {
+  if (!puedeEditarEntregables()) { alert('No tienes permiso para editar entregables.'); return; }
+  const idx = DATA.findIndex(d=>d.oit===oit);
+  if (idx<0) return;
+  DATA[idx].entregables = DATA[idx].entregables || {acta:false,guia:false,informe:false};
+  DATA[idx].entregables[key] = !DATA[idx].entregables[key];
+  const e = DATA[idx].entregables;
+  persistTrabajo(oit, {entregables: e});
+  registrarAuditoria(`${e[key]?'Marcó':'Desmarcó'} entregable "${ENTREG_LABELS[key]}" en OIT ${oit}`, oit);
+  // Save to localStorage too
+  const saved = JSON.parse(localStorage.getItem('spsa_entregables')||'{}');
+  saved[oit] = e;
+  localStorage.setItem('spsa_entregables', JSON.stringify(saved));
+  // Re-render just that cell for speed
+  const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
+  cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
+  // If all done, auto-complete
+  if (e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
+    notificarFelicitacion(oit);
+    if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
+      cambiarEstado(oit, 'COMPLETADO');
+    }
+  }
+}
+
+// ===== GUIA DE ENVIO (numero guia + serie equipo) =====
+function renderGuia(oit, tipo, g) {
+  g = g || {numero:'', serie:''};
+  const numFilled = g.numero ? 'filled' : '';
+  const serFilled = g.serie ? 'filled' : '';
+  return `
+    <div class="guia-row">
+      <div class="guia-field">
+        <label>N° Guía</label>
+        <input type="text" class="guia-input ${numFilled}" placeholder="G-001234" value="${g.numero||''}"
+          onchange="guardarGuia('${oit}','${tipo}','numero',this.value)" onblur="guardarGuia('${oit}','${tipo}','numero',this.value)"
+          ${!puedeEditarGuias()?'disabled':''}>
+      </div>
+      <div class="guia-field">
+        <label>Serie equipo</label>
+        <input type="text" class="guia-input ${serFilled}" placeholder="SN-XXXXXX" value="${g.serie||''}"
+          onchange="guardarGuia('${oit}','${tipo}','serie',this.value)" onblur="guardarGuia('${oit}','${tipo}','serie',this.value)"
+          ${!puedeEditarGuias()?'disabled':''}>
+      </div>
+    </div>`;
+}
+
+function guardarGuia(oit, tipo, campo, valor) {
+  if (!puedeEditarGuias()) { alert('No tienes permiso para editar guías.'); return; }
+  const idx = DATA.findIndex(d=>d.oit===oit);
+  if (idx<0) return;
+  DATA[idx][tipo] = DATA[idx][tipo] || {numero:'',serie:''};
+  DATA[idx][tipo][campo] = valor.trim();
+  const g = DATA[idx][tipo];
+
+  // Auto-marcar/desmarcar el entregable "Guía" según si la Guía de Instalación está completa
+  // (la entrega del entregable "Guía" se basa en la guía de instalación, que es la que certifica el trabajo)
+  DATA[idx].entregables = DATA[idx].entregables || {acta:false, guia:false, informe:false};
+  const instCompleta = !!(DATA[idx].guiaInst?.numero && DATA[idx].guiaInst?.serie);
+  const cambioEntregable = DATA[idx].entregables.guia !== instCompleta;
+  DATA[idx].entregables.guia = instCompleta;
+  const e = DATA[idx].entregables;
+
+  persistTrabajo(oit, {[tipo]: g, entregables: e});
+  registrarAuditoria(`Actualizó ${tipo==='guiaInst'?'Guía de Instalación':'Guía de Desinstalación'} (${campo}) de OIT ${oit}`, oit);
+
+  const lsKey = tipo==='guiaInst' ? 'spsa_guia_inst' : 'spsa_guia_desinst';
+  const saved = JSON.parse(localStorage.getItem(lsKey)||'{}');
+  saved[oit] = g;
+  localStorage.setItem(lsKey, JSON.stringify(saved));
+
+  const savedEntreg = JSON.parse(localStorage.getItem('spsa_entregables')||'{}');
+  savedEntreg[oit] = e;
+  localStorage.setItem('spsa_entregables', JSON.stringify(savedEntreg));
+
+  // Refrescar la celda de Entregables en pantalla si cambió
+  if (cambioEntregable) {
+    const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
+    cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
+    if (instCompleta && e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
+      notificarFelicitacion(oit);
+      if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
+        cambiarEstado(oit, 'COMPLETADO');
+      }
+    }
+  }
+}
+
+function renderTabla(data) {
+  const tbody = document.getElementById('tbody');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No se encontraron registros</td></tr>'; return; }
+  tbody.innerHTML = data.map(r => {
+    const dias = diasHasta(r.fecha);
+    const cls = dias === 0 ? 'row-hoy' : (dias < 0 && r.estado !== 'COMPLETADO') ? 'row-vence' : '';
+    const cliente_short = r.sfa === '551870' ? 'HARD DISCOUNT' : 'SPSA';
+    return `<tr class="${cls}">
+      <td>${r.n}</td>
+      <td><strong>${r.oit}</strong></td>
+      <td>${r.sfa}</td>
+      <td><small>${cliente_short}</small></td>
+      <td><span class="badge ${r.tipo_oit==='ALTA'?'badge-alta':'badge-modif'}">${r.tipo_oit}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${r.direccion}"><small>${r.direccion}</small></td>
+      <td>${r.distrito}</td>
+      <td>${r.departamento}</td>
+      <td>${r.fecha ? r.fecha.slice(5).replace('-','/') + '/' + r.fecha.slice(0,4) : '-'}</td>
+      <td><small>${r.horario||'-'}</small></td>
+      <td>${diasBadge(dias, r.estado)}</td>
+      <td>
+        <select class="tec-sel" onchange="cambiarTecnico('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede asignar técnicos"':''}>
+          ${tecnicoOptions(r.tecnico)}
+        </select>
+      </td>
+      <td>
+        <select class="estado-sel" onchange="cambiarEstado('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede cambiar el estado"':''}>
+          ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
+        </select>
+      </td>
+      <td class="entregables-cell" data-oit="${r.oit}">${renderEntregables(r.oit, r.entregables)}</td>
+      <td class="guia-cell">${renderGuia(r.oit, 'guiaInst', r.guiaInst)}</td>
+      <td class="guia-cell">${renderGuia(r.oit, 'guiaDesinst', r.guiaDesinst)}</td>
+      <td>
+        <button class="btn btn-gray" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirDetalle('${r.oit}')">👁</button>
+        <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" class="btn btn-blue" style="padding:3px 8px; font-size:0.72rem; text-decoration:none;">📍</a>
+        <button class="btn btn-purple" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirNotificar('${r.oit}')">📤</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderStats(data) {
+  const total = data.length;
+  const pend = data.filter(d=>d.estado==='PENDIENTE').length;
+  const proc = data.filter(d=>d.estado==='EN PROCESO').length;
+  const comp = data.filter(d=>d.estado==='COMPLETADO').length;
+  const venc = data.filter(d=>d.estado==='VENCIDO'||(diasHasta(d.fecha)<0&&d.estado!=='COMPLETADO')).length;
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat total"><div class="stat-num">${total}</div><div class="stat-label">TOTAL SEDES</div></div>
+    <div class="stat pendiente"><div class="stat-num">${pend}</div><div class="stat-label">PENDIENTES</div></div>
+    <div class="stat proceso"><div class="stat-num">${proc}</div><div class="stat-label">EN PROCESO</div></div>
+    <div class="stat completado"><div class="stat-num">${comp}</div><div class="stat-label">COMPLETADOS</div></div>
+    <div class="stat vencido"><div class="stat-num">${venc}</div><div class="stat-label">VENCIDOS/URGENTES</div></div>
+  `;
+}
+
+function renderAlertas() {
+  const hoy = DATA.filter(d => diasHasta(d.fecha)===0 && d.estado!=='COMPLETADO');
+  const man = DATA.filter(d => diasHasta(d.fecha)===1 && d.estado!=='COMPLETADO');
+  const urg = DATA.filter(d => diasHasta(d.fecha)<0 && d.estado!=='COMPLETADO');
+  const prox = DATA.filter(d => diasHasta(d.fecha)>1 && diasHasta(d.fecha)<=7 && d.estado!=='COMPLETADO');
+  
+  function card(r, tag, tagcls, cardcls, extra) {
+    const tec = r.tecnico ? ` · 👤 ${r.tecnico}` : ' · <span style="color:#f87171">Sin técnico</span>';
+    return `<div class="alert-card ${cardcls}"><div><div class="alert-oit">${r.oit} – ${r.distrito}</div><div class="alert-info">${extra}${tec}</div></div><span class="alert-tag ${tagcls}">${tag}</span></div>`;
+  }
+  
+  let html = '';
+  if (hoy.length) html += `<div class="alert-section"><h3 style="color:#fcd34d;margin-bottom:10px;">🔴 HOY (${hoy.length})</h3>${hoy.map(r=>card(r,'HOY','tag-hoy','hoy',`${r.direccion} · ${r.horario}`)).join('')}</div>`;
+  if (urg.length) html += `<div class="alert-section"><h3 style="color:#fca5a5;margin-bottom:10px;">⚠️ VENCIDOS (${urg.length})</h3>${urg.map(r=>card(r,`Hace ${Math.abs(diasHasta(r.fecha))}d`,'tag-pasado','pasado',`${r.fecha} · ${r.horario}`)).join('')}</div>`;
+  if (man.length) html += `<div class="alert-section"><h3 style="color:#e9d5ff;margin-bottom:10px;">🟡 MAÑANA (${man.length})</h3>${man.map(r=>card(r,'Mañana','tag-manana','manana',`${r.direccion} · ${r.horario}`)).join('')}</div>`;
+  if (prox.length) html += `<div class="alert-section"><h3 style="color:#93c5fd;margin-bottom:10px;">📅 PRÓXIMOS 7 DÍAS (${prox.length})</h3>${prox.map(r=>{
+    const tec = r.tecnico ? ` · 👤 ${r.tecnico}` : ' · <span style="color:#f87171">Sin técnico</span>';
+    return `<div class="alert-card" style="border-color:#2563eb"><div><div class="alert-oit">${r.oit} – ${r.distrito}</div><div class="alert-info">${r.fecha} · ${r.horario}${tec}</div></div><span class="alert-tag" style="background:#1e3a5f;color:#93c5fd">${diasHasta(r.fecha)}d</span></div>`;
+  }).join('')}</div>`;
+  if (!html) html = '<div class="empty">✅ No hay alertas urgentes</div>';
+  document.getElementById('alertas-content').innerHTML = html;
+  document.getElementById('alertas-modal-content').innerHTML = html;
+}
+
+function renderSectores() {
+  const depts = {};
+  const colors = {Lima:'#ef4444',Piura:'#22c55e','La Libertad':'#f97316',Arequipa:'#22d3ee',Ica:'#a855f7'};
+  DATA.forEach(d => {
+    if (!depts[d.departamento]) depts[d.departamento] = {total:0,comp:0,pend:0,proc:0,sintec:0};
+    depts[d.departamento].total++;
+    if (d.estado==='COMPLETADO') depts[d.departamento].comp++;
+    else if (d.estado==='EN PROCESO') depts[d.departamento].proc++;
+    else depts[d.departamento].pend++;
+    if (!d.tecnico) depts[d.departamento].sintec++;
+  });
+  document.getElementById('sector-grid').innerHTML = Object.entries(depts).map(([dep, s]) => {
+    const pct = Math.round(s.comp/s.total*100);
+    const col = colors[dep]||'#64748b';
+    return `<div class="sector-card">
+      <h3><span class="dot" style="background:${col}"></span>${dep}</h3>
+      <div style="font-size:1.5rem;font-weight:800;color:${col}">${s.total} <span style="font-size:0.8rem;color:#94a3b8">sedes</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${col}"></div></div>
+      <div class="sector-stats">
+        <span>✅ ${s.comp} completos</span>
+        <span>🔄 ${s.proc} en proceso</span>
+        <span>⏳ ${s.pend} pendientes</span>
+        <span>👤 ${s.sintec} sin técnico</span>
+      </div>
+      <div style="font-size:0.75rem;color:${col};margin-top:6px;font-weight:700">${pct}% completado</div>
+    </div>`;
+  }).join('');
+}
+
+function renderTecnicos() {
+  document.getElementById('tec-grid').innerHTML = TECNICOS.map((t, i) => {
+    const trabajos = DATA.filter(d=>d.tecnico===t.nombre);
+    const pend = trabajos.filter(d=>d.estado==='PENDIENTE'||d.estado==='EN PROCESO').length;
+    const comp = trabajos.filter(d=>d.estado==='COMPLETADO').length;
+    const total = trabajos.length;
+    const pct = total ? Math.round(comp/total*100) : 0;
+    const col = TEC_COLORS[i % TEC_COLORS.length];
+    return `<div class="tec-card" style="border-color:${col}">
+      <h3>👤 ${t.nombre}</h3>
+      <div class="tec-dept">${t.depto ? '📍 '+t.depto : '📍 General'} ${t.cel?(' · 📱 '+t.cel):''} ${t.email?(' · ✉️ '+t.email):''}</div>
+      <div class="tec-stats-row">
+        <div><div class="tec-stat-num" style="color:#93c5fd">${total}</div><div style="font-size:0.7rem;color:#64748b">trabajos</div></div>
+        <div><div class="tec-stat-num" style="color:#fcd34d">${pend}</div><div style="font-size:0.7rem;color:#64748b">pendientes</div></div>
+        <div><div class="tec-stat-num" style="color:#6ee7b7">${comp}</div><div style="font-size:0.7rem;color:#64748b">completados</div></div>
+      </div>
+      <div class="tec-progress"><div class="tec-progress-fill" style="width:${pct}%"></div></div>
+      <div style="font-size:0.72rem;color:#64748b">${pct}% completado</div>
+      <div class="tec-actions">
+        ${puedeGestionarTecnicos()?`<button class="btn btn-gray" style="padding:4px 10px;font-size:0.72rem;" onclick="editarTecnico(${i})">✏ Editar</button>`:''}
+        ${esAdmin()?`<button class="btn btn-red" style="padding:4px 10px;font-size:0.72rem;" onclick="eliminarTecnico(${i})">🗑 Eliminar</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function agregarTecnico() {
+  if (!puedeGestionarTecnicos()) { alert('No tienes permiso para agregar técnicos.'); return; }
+  const nombre = document.getElementById('tecNombre').value.trim();
+  const cel = document.getElementById('tecCel').value.trim();
+  const email = document.getElementById('tecEmail').value.trim();
+  const depto = document.getElementById('tecDept').value;
+  if (!nombre) { alert('Ingresa el nombre del técnico'); return; }
+  if (TECNICOS.find(t=>t.nombre===nombre)) { alert('Ya existe un técnico con ese nombre'); return; }
+  const id = 't'+Date.now();
+  const t = {id, nombre, cel, email, depto, wa_key:''};
+  TECNICOS.push(t);
+  persistTecnicoDoc(t);
+  registrarAuditoria(`Agregó al técnico ${nombre}`);
+  document.getElementById('tecNombre').value='';
+  document.getElementById('tecCel').value='';
+  document.getElementById('tecEmail').value='';
+  document.getElementById('tecDept').value='';
+  if (!firebaseOK) { renderTecnicos(); renderFiltroTecnico(); filtrar(); }
+}
+
+function editarTecnico(i) {
+  if (!puedeGestionarTecnicos()) { alert('No tienes permiso para editar técnicos.'); return; }
+  const t = TECNICOS[i];
+  const nombre = prompt('Nombre:', t.nombre); if (nombre===null) return;
+  const cel = prompt('Celular (WhatsApp, con código de país, ej +51999999999):', t.cel||''); if (cel===null) return;
+  const email = prompt('Correo:', t.email||''); if (email===null) return;
+  const depto = prompt('Departamento asignado (Lima/Piura/La Libertad/Arequipa/Ica o vacío):', t.depto||''); if (depto===null) return;
+  const waKey = prompt('CallMeBot API Key (opcional, para WhatsApp automático):', t.wa_key||''); if (waKey===null) return;
+
+  const oldName = t.nombre;
+  t.nombre = nombre.trim(); t.cel = cel.trim(); t.email = email.trim(); t.depto = depto.trim(); t.wa_key = waKey.trim();
+  
+  persistTecnicoDoc(t);
+  registrarAuditoria(`Editó al técnico ${oldName}${oldName!==t.nombre?' (renombrado a '+t.nombre+')':''}`);
+
+  if (oldName !== t.nombre) {
+    DATA.forEach(d => { if (d.tecnico===oldName) { d.tecnico = t.nombre; persistTrabajo(d.oit, {tecnico: t.nombre}); } });
+  }
+  if (!firebaseOK) { renderTecnicos(); renderFiltroTecnico(); filtrar(); }
+}
+
+function eliminarTecnico(i) {
+  if (!esAdmin()) { alert('Solo el Administrador puede eliminar técnicos.'); return; }
+  const t = TECNICOS[i];
+  if (!confirm(`¿Eliminar a ${t.nombre}? Sus trabajos asignados quedarán "Sin asignar".`)) return;
+  DATA.forEach(d => { if (d.tecnico===t.nombre) { d.tecnico=''; persistTrabajo(d.oit, {tecnico:''}); } });
+  deleteTecnicoDoc(t.id);
+  registrarAuditoria(`Eliminó al técnico ${t.nombre}`);
+  TECNICOS.splice(i,1);
+  if (!firebaseOK) { renderTecnicos(); renderFiltroTecnico(); filtrar(); }
+}
+
+function scrollTabla(amount) {
+  const wrap = document.getElementById('tablaWrapMain');
+  if (wrap) wrap.scrollBy({left: amount, behavior: 'smooth'});
+}
+
+function filtrar() {
+  const q = document.getElementById('buscar').value.toLowerCase();
+  const dept = document.getElementById('filtDept').value;
+  const est = document.getElementById('filtEstado').value;
+  const tec = document.getElementById('filtTecnico').value;
+  const fecha = document.getElementById('filtFecha').value;
+  
+  filtrados = DATA.filter(d => {
+    if (q && !`${d.oit} ${d.distrito} ${d.cliente} ${d.direccion} ${d.tecnico}`.toLowerCase().includes(q)) return false;
+    if (dept && d.departamento !== dept) return false;
+    if (est && d.estado !== est) return false;
+    if (tec) {
+      if (tec==='__SIN__' && d.tecnico) return false;
+      if (tec!=='__SIN__' && d.tecnico !== tec) return false;
+    }
+    if (fecha) {
+      const dias = diasHasta(d.fecha);
+      if (fecha==='hoy' && dias!==0) return false;
+      if (fecha==='semana' && (dias<0||dias>7)) return false;
+      if (fecha==='mes' && (dias<0||dias>30)) return false;
+      if (fecha==='vencido' && dias>=0) return false;
+    }
+    return true;
+  });
+  renderTabla(filtrados);
+  renderStats(filtrados);
+  document.getElementById('contadorFiltro').textContent = `${filtrados.length} de ${DATA.length} registros`;
+}
+
+function limpiarFiltros() {
+  document.getElementById('buscar').value='';
+  document.getElementById('filtDept').value='';
+  document.getElementById('filtEstado').value='';
+  document.getElementById('filtTecnico').value='';
+  document.getElementById('filtFecha').value='';
+  filtrar();
+}
+
+function cambiarEstado(oit, estado) {
+  if (!esAdmin()) { alert('Solo el Administrador puede cambiar el estado de un trabajo.'); filtrar(); return; }
+  const idx = DATA.findIndex(d=>d.oit===oit);
+  if (idx>=0) DATA[idx].estado = estado;
+  persistTrabajo(oit, {estado});
+  registrarAuditoria(`Cambió el estado de OIT ${oit} a ${estado}`, oit);
+  if (!firebaseOK) { filtrar(); renderTecnicos(); }
+}
+
+function cambiarTecnico(oit, tecnico) {
+  if (!esAdmin()) { alert('Solo el Administrador puede asignar técnicos a un trabajo.'); filtrar(); return; }
+  const idx = DATA.findIndex(d=>d.oit===oit);
+  const prev = DATA[idx].tecnico;
+  if (idx>=0) DATA[idx].tecnico = tecnico;
+  persistTrabajo(oit, {tecnico});
+  registrarAuditoria(`Asignó técnico "${tecnico||'Sin asignar'}" a OIT ${oit}`, oit);
+  if (!firebaseOK) { filtrar(); renderTecnicos(); }
+  if (tecnico && tecnico !== prev) {
+    abrirNotificar(oit, true);
+  }
+}
+
+function abrirDetalle(oit) {
+  const r = DATA.find(d=>d.oit===oit);
+  editando = oit;
+  document.getElementById('modal-title').textContent = `Detalle – ${r.oit}`;
+  document.getElementById('modal-info').innerHTML = [
+    ['OIT',r.oit],['SFA',r.sfa],['Cliente',r.cliente],['Tipo OIT',r.tipo_oit],
+    ['Dirección',r.direccion],['Distrito',r.distrito],['Departamento',r.departamento],
+    ['Fecha Migración',r.fecha],['Horario',r.horario],['BW',r.bw],['Cambio CPE',r.cambio_cpe],
+    ['Días para migrar', diasHasta(r.fecha)===0?'HOY':diasHasta(r.fecha)+'d']
+  ].map(([l,v])=>`<div class="info-item"><div class="lbl">${l}</div><div class="val">${v||'-'}</div></div>`).join('');
+  document.getElementById('modal-tecnico').innerHTML = tecnicoOptions(r.tecnico);
+  document.getElementById('modal-notas').value = r.nota||'';
+  document.getElementById('modal-estado').value = r.estado;
+  // Render entregables in modal
+  const _e = r.entregables || {acta:false,guia:false,informe:false};
+  document.getElementById('modal-entregables').innerHTML = Object.entries(ENTREG_LABELS).map(([k,v]) =>
+    `<span class="chk-btn ${_e[k]?'on':'off'}" onclick="toggleEntregable('${r.oit}','${k}'); abrirDetalle('${r.oit}')" style="padding:4px 12px; font-size:0.78rem;">${_e[k]?'✅':'⬜'} ${v}</span>`
+  ).join('');
+  const _done = [_e.acta,_e.guia,_e.informe].filter(Boolean).length;
+  const _pct = Math.round(_done/3*100);
+  const _col = _pct===100?'#059669':_pct>0?'#d97706':'#334155';
+  document.getElementById('modal-entreg-fill').style.width = _pct+'%';
+  document.getElementById('modal-entreg-fill').style.background = _col;
+  document.getElementById('modal-entreg-pct').textContent = `${_pct}% completado (${_done} de 3 entregables)`;
+  const _gi = r.guiaInst || {numero:'',serie:''};
+  document.getElementById('modal-guiaInst-numero').value = _gi.numero||'';
+  document.getElementById('modal-guiaInst-serie').value = _gi.serie||'';
+  const _gd = r.guiaDesinst || {numero:'',serie:''};
+  document.getElementById('modal-guiaDesinst-numero').value = _gd.numero||'';
+  document.getElementById('modal-guiaDesinst-serie').value = _gd.serie||'';
+  document.getElementById('modalDetalle').classList.add('open');
+}
+
+function guardarDetalle() {
+  if (!editando) return;
+  const estado = document.getElementById('modal-estado').value;
+  const tecnico = document.getElementById('modal-tecnico').value;
+  let nota = document.getElementById('modal-notas').value;
+  const idx = DATA.findIndex(d=>d.oit===editando);
+  const prevTec = DATA[idx].tecnico;
+  const notaPrevia = DATA[idx].nota || '';
+  // Si el comentario cambió respecto al guardado anterior, se antepone la fecha de hoy entre paréntesis
+  if (nota.trim() && nota.trim() !== notaPrevia.trim()) {
+    const hoyStr = peruFechaHoraStr();
+    nota = `(${hoyStr}) ${nota.trim()}`;
+  }
+  DATA[idx].estado = estado;
+  DATA[idx].tecnico = tecnico;
+  DATA[idx].nota = nota;
+  const giNum = document.getElementById('modal-guiaInst-numero').value.trim();
+  const giSer = document.getElementById('modal-guiaInst-serie').value.trim();
+  const gdNum = document.getElementById('modal-guiaDesinst-numero').value.trim();
+  const gdSer = document.getElementById('modal-guiaDesinst-serie').value.trim();
+  const idxG = DATA.findIndex(d=>d.oit===editando);
+  if (idxG>=0) {
+    DATA[idxG].guiaInst = {numero: giNum, serie: giSer};
+    DATA[idxG].guiaDesinst = {numero: gdNum, serie: gdSer};
+    // Auto-sincronizar entregable "Guía" según Guía de Instalación
+    DATA[idxG].entregables = DATA[idxG].entregables || {acta:false,guia:false,informe:false};
+    DATA[idxG].entregables.guia = !!(giNum && giSer);
+  }
+  const savedGI = JSON.parse(localStorage.getItem('spsa_guia_inst')||'{}');
+  savedGI[editando] = {numero: giNum, serie: giSer};
+  localStorage.setItem('spsa_guia_inst', JSON.stringify(savedGI));
+  const savedGD = JSON.parse(localStorage.getItem('spsa_guia_desinst')||'{}');
+  savedGD[editando] = {numero: gdNum, serie: gdSer};
+  localStorage.setItem('spsa_guia_desinst', JSON.stringify(savedGD));
+  persistTrabajo(editando, {estado, tecnico, nota, guiaInst: {numero: giNum, serie: giSer}, guiaDesinst: {numero: gdNum, serie: gdSer}, entregables: DATA[idxG].entregables});
+  cerrarModal('modalDetalle');
+  if (!firebaseOK) { filtrar(); renderTecnicos(); }
+  if (tecnico && tecnico !== prevTec) {
+    abrirNotificar(editando, true);
+  }
+}
+
+function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function setTab(tab, el) {
+  if (tab==='usuarios' && !puedeGestionarUsuarios()) { alert('No tienes permiso para acceder a esta sección.'); return; }
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['tabla','alertas','sectores','tecnicos','notif','programaciones','usuarios'].forEach(t=>document.getElementById('tab-'+t).style.display=t===tab?'block':'none');
+  if (tab==='alertas') renderAlertas();
+  if (tab==='sectores') renderSectores();
+  if (tab==='tecnicos') renderTecnicos();
+  if (tab==='programaciones') renderProgramaciones();
+  if (tab==='notif' && puedeVerAuditoria()) renderAuditoria();
+  if (tab==='usuarios') { cargarUsuarios(); renderUsuarios(); }
+}
+
+function exportarCSV() {
+  const cols = ['n','oit','sfa','cliente','tipo_oit','direccion','distrito','departamento','fecha','horario','bw','cambio_cpe','tecnico','estado','acta','guia_entregable','informe','guia_inst_numero','guia_inst_serie','guia_desinst_numero','guia_desinst_serie'];
+  const rows = filtrados.map(r=>({...r, acta:r.entregables?.acta?'SI':'NO', guia_entregable:r.entregables?.guia?'SI':'NO', informe:r.entregables?.informe?'SI':'NO', guia_inst_numero:r.guiaInst?.numero||'', guia_inst_serie:r.guiaInst?.serie||'', guia_desinst_numero:r.guiaDesinst?.numero||'', guia_desinst_serie:r.guiaDesinst?.serie||''}));
+  const csv = [cols.join(','), ...filtrados.map(r=>cols.map(c=>`"${(r[c]||'')+''}"`).join(','))].join('\n');
+  const a = document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='SPSA_cronograma_trabajos.csv'; a.click();
+}
+
+function generarResumenEmail() {
+  const hoy = DATA.filter(d=>diasHasta(d.fecha)<=3&&diasHasta(d.fecha)>=0&&d.estado!=='COMPLETADO');
+  const texto = `RESUMEN DE TRABAJOS - SPSA / HARD DISCOUNT
+Generado: ${new Date().toLocaleDateString('es-PE')}
+==========================================
+
+TRABAJOS PROXIMOS (Hoy + 3 dias):
+${hoy.map(r=>`
+- OIT: ${r.oit}
+  Fecha: ${r.fecha} | Horario: ${r.horario}
+  Direccion: ${r.direccion}
+  Distrito: ${r.distrito}, ${r.departamento}
+  Tecnico: ${r.tecnico||'Sin asignar'}
+  Estado: ${r.estado}
+  CPE: ${r.cambio_cpe}
+`).join('')}
+Total: ${hoy.length} trabajos proximos
+==========================================
+`;
+  document.getElementById('resumen-email').style.display='block';
+  document.getElementById('resumen-texto').textContent=texto;
+}
+
+function copiarResumen() {
+  navigator.clipboard.writeText(document.getElementById('resumen-texto').textContent);
+  alert('¡Copiado al portapapeles!');
+}
+
+// ===== PROGRAMACIONES SEMANALES =====
+let semanaOffset = 0;
+const DIAS_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function getLunesDeSemana(offset) {
+  const _ahora = new Date();
+  const _peruDate = new Date(_ahora.toLocaleString('en-US', {timeZone: 'America/Lima'}));
+  const hoy = new Date(_peruDate.getFullYear(), _peruDate.getMonth(), _peruDate.getDate());
+  const diaSemana = hoy.getDay(); // 0=dom,1=lun...6=sab
+  const diffLunes = diaSemana === 0 ? -6 : 1 - diaSemana;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffLunes + offset * 7);
+  return lunes;
+}
+
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+
+function fmtDate(d) {
+  return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');
+}
+
+function fmtLabel(d) {
+  return `${d.getDate()} ${MESES_ES[d.getMonth()]}`;
+}
+
+function estadoColor(estado, e) {
+  if (estado==='COMPLETADO') return '#059669';
+  if (estado==='VENCIDO') return '#dc2626';
+  if (estado==='EN PROCESO') return '#d97706';
+  const pct = e ? Math.round([e.acta,e.guia,e.informe].filter(Boolean).length/3*100) : 0;
+  if (pct>0) return '#7c3aed';
+  return '#334155';
+}
+
+function estadoBadgeSmall(estado) {
+  const m = {PENDIENTE:'#78350f|#fcd34d','EN PROCESO':'#4c1d95|#c4b5fd',COMPLETADO:'#064e3b|#6ee7b7',VENCIDO:'#7f1d1d|#fca5a5'};
+  const [bg,col] = (m[estado]||'#1f2937|#94a3b8').split('|');
+  return `<span style="background:${bg};color:${col};padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:700;">${estado}</span>`;
+}
+
+function cambiarSemana(dir) { semanaOffset += dir; renderProgramaciones(); }
+function irSemanaActual() { semanaOffset = 0; renderProgramaciones(); }
+
+function renderProgramaciones() {
+  const lunes = getLunesDeSemana(semanaOffset);
+  const domingo = addDays(lunes, 6);
+
+  // Week label
+  document.getElementById('week-label').textContent =
+    `${fmtLabel(lunes)} – ${fmtLabel(domingo)} ${domingo.getFullYear()}`;
+
+  // Hoy
+  const _ahora = new Date();
+  const _peruDate = new Date(_ahora.toLocaleString('en-US', {timeZone: 'America/Lima'}));
+  const hoyStr = fmtDate(new Date(_peruDate.getFullYear(), _peruDate.getMonth(), _peruDate.getDate()));
+
+  // Get OITs for this week
+  const semanaOits = DATA.filter(d => {
+    if (!d.fecha) return false;
+    return d.fecha >= fmtDate(lunes) && d.fecha <= fmtDate(domingo);
+  });
+
+  // Summary stats
+  const total = semanaOits.length;
+  const comp  = semanaOits.filter(d=>d.estado==='COMPLETADO').length;
+  const pend  = semanaOits.filter(d=>d.estado==='PENDIENTE').length;
+  const proc  = semanaOits.filter(d=>d.estado==='EN PROCESO').length;
+  const sinTec = semanaOits.filter(d=>!d.tecnico).length;
+
+  document.getElementById('week-summary').innerHTML = `
+    <div class="week-stat" style="border-color:#2563eb"><div class="ws-num" style="color:#93c5fd">${total}</div><div class="ws-lbl">OITs esta semana</div></div>
+    <div class="week-stat" style="border-color:#059669"><div class="ws-num" style="color:#6ee7b7">${comp}</div><div class="ws-lbl">Completadas</div></div>
+    <div class="week-stat" style="border-color:#7c3aed"><div class="ws-num" style="color:#c4b5fd">${proc}</div><div class="ws-lbl">En proceso</div></div>
+    <div class="week-stat" style="border-color:#d97706"><div class="ws-num" style="color:#fcd34d">${pend}</div><div class="ws-lbl">Pendientes</div></div>
+    <div class="week-stat" style="border-color:#dc2626"><div class="ws-num" style="color:#fca5a5">${sinTec}</div><div class="ws-lbl">Sin técnico</div></div>
+  `;
+
+  // Build 7-day grid (Mon=0 ... Sun=6)
+  let gridHTML = '';
+  let tableRows = '';
+
+  for (let i = 0; i < 7; i++) {
+    const dia = addDays(lunes, i);
+    const diaStr = fmtDate(dia);
+    const esHoy = diaStr === hoyStr;
+    const esFinde = (dia.getDay()===0 || dia.getDay()===6);
+    const oitsDia = semanaOits.filter(d=>d.fecha===diaStr).sort((a,b)=>a.horario.localeCompare(b.horario));
+
+    const cards = oitsDia.map(r => {
+      const e = r.entregables || {acta:false,guia:false,informe:false};
+      const done = [e.acta,e.guia,e.informe].filter(Boolean).length;
+      const pct  = Math.round(done/3*100);
+      const col  = estadoColor(r.estado, e);
+      const tecLabel = r.tecnico ? r.tecnico.split(' ')[0] : '⚠️ Sin asignar';
+      return `<div class="week-card" style="border-color:${col}" onclick="abrirDetalle('${r.oit}')">
+        <div class="wc-oit">${r.oit}</div>
+        <div class="wc-dist" title="${r.distrito}">${r.distrito}</div>
+        <div class="wc-tec" title="${r.tecnico||'Sin asignar'}">👤 ${tecLabel}</div>
+        <div style="font-size:0.62rem;color:${col};margin-top:2px;">${r.horario||''}</div>
+        <div class="wc-prog"><div class="wc-prog-fill" style="width:${pct}%;background:${col}"></div></div>
+      </div>`;
+    }).join('');
+
+    const emptyMsg = oitsDia.length===0 ? `<div style="font-size:0.65rem;color:#334155;text-align:center;padding:12px 4px;">Sin OITs</div>` : '';
+
+    gridHTML += `<div class="day-col${esHoy?' today':''}">
+      <div class="day-header${esHoy?' today':esFinde?' weekend':''}">${DIAS_ES[dia.getDay()]} ${dia.getDate()}${oitsDia.length>0?` <span style="background:#2563eb;color:#fff;border-radius:8px;padding:0 5px;font-size:0.62rem;">${oitsDia.length}</span>`:''}</div>
+      <div class="day-body">${cards}${emptyMsg}</div>
+    </div>`;
+
+    // Table rows for this day
+    oitsDia.forEach(r => {
+      const e = r.entregables || {acta:false,guia:false,informe:false};
+      const done = [e.acta,e.guia,e.informe].filter(Boolean).length;
+      const pct  = Math.round(done/3*100);
+      const col  = estadoColor(r.estado, e);
+      const entrChips = Object.entries({Acta:e.acta,Guía:e.guia,Informe:e.informe}).map(([l,v])=>
+        `<span style="background:${v?'#064e3b':'#1a2533'};color:${v?'#6ee7b7':'#64748b'};border-radius:8px;padding:1px 6px;font-size:0.65rem;font-weight:700;">${v?'✓':''} ${l}</span>`
+      ).join(' ');
+      tableRows += `<tr>
+        <td style="font-size:0.75rem;white-space:nowrap;">${DIAS_ES[dia.getDay()]} ${fmtLabel(dia)}</td>
+        <td><strong style="font-size:0.78rem;">${r.oit}</strong></td>
+        <td style="font-size:0.75rem;">${r.distrito}</td>
+        <td style="font-size:0.75rem;">${r.horario||'-'}</td>
+        <td style="font-size:0.75rem;">${r.tecnico||'<span style="color:#f87171">Sin asignar</span>'}</td>
+        <td>${estadoBadgeSmall(r.estado)}</td>
+        <td>${entrChips}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div style="flex:1;height:6px;background:#1a2533;border-radius:3px;overflow:hidden;min-width:60px;">
+              <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+            </div>
+            <span style="font-size:0.68rem;color:${col};font-weight:700;">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    });
+  }
+
+  if (!tableRows) tableRows = `<tr><td colspan="8" class="empty">No hay OITs programadas para esta semana</td></tr>`;
+
+  document.getElementById('week-grid').innerHTML = gridHTML;
+  document.getElementById('week-tbody').innerHTML = tableRows;
+}
+
+// ===== EMAILJS CONFIG (se guarda en localStorage para persistir) =====
+let EMAILJS_SERVICE_ID = localStorage.getItem('ejs_sid') || '';
+let EMAILJS_TEMPLATE_ID = localStorage.getItem('ejs_tid') || '';
+let EMAILJS_PUBLIC_KEY = localStorage.getItem('ejs_pk') || '';
+const REMITENTE = 'elvis.arci@gmail.com';
+
+// ===== GOOGLE APPS SCRIPT — Solicitud de Equipo (Excel adjunto a logística/aarana/mcamasca + CC técnico) =====
+let APPS_SCRIPT_URL = localStorage.getItem('apps_script_url') || '';
+
+function guardarAppsScriptURL() {
+  const url = document.getElementById('asUrl').value.trim();
+  if (!url) { alert('Pega la URL de tu Web App de Apps Script.'); return; }
+  if (!url.startsWith('https://script.google.com/')) { alert('La URL debe comenzar con https://script.google.com/'); return; }
+  APPS_SCRIPT_URL = url;
+  localStorage.setItem('apps_script_url', url);
+  updateAppsScriptStatus();
+  cerrarModal('modalAppsScript');
+  alert('✅ Integración con Google Apps Script configurada. Ahora cada asignación de técnico enviará la Solicitud de Equipo automáticamente.');
+}
+
+function limpiarAppsScriptURL() {
+  if (!confirm('¿Quitar la configuración de Apps Script?')) return;
+  APPS_SCRIPT_URL = '';
+  localStorage.removeItem('apps_script_url');
+  updateAppsScriptStatus();
+  cerrarModal('modalAppsScript');
+}
+
+function updateAppsScriptStatus() {
+  const ok = !!APPS_SCRIPT_URL;
+  const txt = ok ? '🟢 Apps Script configurado' : '⚪ Apps Script no configurado';
+  const col = ok ? '#6ee7b7' : '#64748b';
+  ['appsscript-status','appsscript-status2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = txt; el.style.color = col; }
+  });
+}
+
+async function enviarSolicitudEquipo(oit) {
+  if (!APPS_SCRIPT_URL) return { ok:false, msg:'Apps Script no configurado' };
+  const r = DATA.find(d=>d.oit===oit);
+  if (!r || !r.tecnico) return { ok:false, msg:'Sin técnico asignado' };
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  const cliente_txt = r.cliente.includes('HARD') ? 'COMPAÑIA HARD DISCOUNT S.A.C.' : 'SUPERMERCADOS PERUANOS S.P.S.A.';
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain evita el preflight CORS en Apps Script
+      body: JSON.stringify({
+        oit: r.oit,
+        fecha: r.fecha,
+        tecnico: t ? t.nombre : r.tecnico,
+        tecnicoEmail: t ? t.email : '',
+        distrito: r.distrito,
+        cliente: cliente_txt
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      registrarAuditoria(`Envió Solicitud de Equipo (Excel) por OIT ${oit} a logística + ${t?.nombre||''}`, oit);
+      return { ok:true, msg:'Solicitud de Equipo enviada con Excel adjunto' };
+    } else {
+      return { ok:false, msg: data.error || 'Error desconocido en Apps Script' };
+    }
+  } catch(e) {
+    return { ok:false, msg: 'Error de red al contactar Apps Script: ' + e.message };
+  }
+}
+
+function updateEmailJSStatus() {
+  const ok = EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY;
+  const txt = ok ? '🟢 EmailJS configurado' : '⚪ EmailJS no configurado';
+  const col = ok ? '#6ee7b7' : '#64748b';
+  ['emailjs-status','emailjs-status2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = txt; el.style.color = col; }
+  });
+  if (ok) {
+    try { emailjs.init(EMAILJS_PUBLIC_KEY); } catch(e) {}
+  }
+}
+
+function guardarEmailJS() {
+  const sid = document.getElementById('ejs-sid').value.trim();
+  const tid = document.getElementById('ejs-tid').value.trim();
+  const pk  = document.getElementById('ejs-pk').value.trim();
+  if (!sid || !tid || !pk) { alert('Completa los 3 campos'); return; }
+  EMAILJS_SERVICE_ID  = sid;
+  EMAILJS_TEMPLATE_ID = tid;
+  EMAILJS_PUBLIC_KEY  = pk;
+  localStorage.setItem('ejs_sid', sid);
+  localStorage.setItem('ejs_tid', tid);
+  localStorage.setItem('ejs_pk', pk);
+  emailjs.init(pk);
+  updateEmailJSStatus();
+  cerrarModal('modalEmailJS');
+  alert('✅ EmailJS configurado correctamente. Los correos se enviarán automáticamente al asignar trabajos.');
+}
+
+function limpiarEmailJS() {
+  if (!confirm('¿Eliminar la configuración de EmailJS?')) return;
+  EMAILJS_SERVICE_ID = EMAILJS_TEMPLATE_ID = EMAILJS_PUBLIC_KEY = '';
+  localStorage.removeItem('ejs_sid'); localStorage.removeItem('ejs_tid'); localStorage.removeItem('ejs_pk');
+  updateEmailJSStatus();
+  cerrarModal('modalEmailJS');
+}
+
+// ===== ENVÍO AUTOMÁTICO DE CORREO VIA EMAILJS =====
+async function enviarCorreo(oit) {
+  const r = DATA.find(d=>d.oit===oit);
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  if (!t || !t.email) return {ok:false, msg:'Sin email registrado'};
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) return {ok:false, msg:'EmailJS no configurado'};
+
+  const dias = diasHasta(r.fecha);
+  const diasTxt = dias===0?'HOY':(dias===1?'MAÑANA':(dias>0?`en ${dias} días`:`hace ${Math.abs(dias)} días (VENCIDO)`));
+  const cliente_txt = r.cliente.includes('HARD') ? 'COMPAÑIA HARD DISCOUNT S.A.C.' : 'SUPERMERCADOS PERUANOS S.P.S.A.';
+  const mapsLink = `https://www.google.com/maps?q=${r.lat},${r.lng}`;
+
+  const templateParams = {
+    to_email:      t.email,
+    to_name:       t.nombre,
+    from_name:     'SPSA Dashboard - elvis.arci@gmail.com',
+    reply_to:      REMITENTE,
+    subject:       `🔔 Nueva asignación OIT ${r.oit} – ${r.distrito}`,
+    oit:           r.oit,
+    sfa:           r.sfa,
+    cliente:       cliente_txt,
+    tipo_oit:      r.tipo_oit,
+    direccion:     r.direccion,
+    distrito:      r.distrito,
+    departamento:  r.departamento,
+    fecha:         r.fecha,
+    dias_txt:      diasTxt,
+    horario:       r.horario,
+    bw:            r.bw,
+    cambio_cpe:    r.cambio_cpe,
+    maps_link:     mapsLink,
+    tecnico:       t.nombre,
+    message: `Estimado/a ${t.nombre},\n\nSe te ha asignado el siguiente trabajo:\n\nOIT: ${r.oit}\nCliente: ${cliente_txt}\nTipo: ${r.tipo_oit}\nDirección: ${r.direccion}\nDistrito: ${r.distrito}, ${r.departamento}\nFecha de migración: ${r.fecha} (${diasTxt})\nHorario: ${r.horario}\nBW: ${r.bw}\nCambio CPE: ${r.cambio_cpe}\nUbicación: ${mapsLink}\n\nSaludos,\nelvis.arci@gmail.com\nSPSA Dashboard`
+  };
+
+  try {
+    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+    return {ok:true, msg:`Correo enviado a ${t.email}`};
+  } catch(e) {
+    return {ok:false, msg:`Error EmailJS: ${e.text || e.message || JSON.stringify(e)}`};
+  }
+}
+
+// ===== MENSAJES DE FELICITACIÓN ALEATORIOS =====
+const MENSAJES_FELICITACION = [
+  (nombre, oit) => `🎉 ¡Excelente trabajo, ${nombre}! Completaste el 100% de los entregables de la OIT ${oit}. Tu dedicación y profesionalismo hacen la diferencia en el equipo. ¡Sigue así! 👏`,
+  (nombre, oit) => `🌟 ${nombre}, felicitaciones por finalizar todos los entregables de la OIT ${oit}. Tu compromiso y puntualidad son un ejemplo para todo el equipo SPSA. ¡Gran labor! 🙌`,
+  (nombre, oit) => `🏆 ¡Trabajo impecable, ${nombre}! Acabas de completar el 100% de la OIT ${oit}. Gracias por tu esfuerzo y por entregar siempre con calidad. ¡Seguimos contando contigo! 💪`,
+  (nombre, oit) => `✅ ${nombre}, la OIT ${oit} quedó 100% completa gracias a ti. Tu desempeño constante es muy valorado. ¡Felicitaciones por otro trabajo bien hecho! 🎯`,
+  (nombre, oit) => `👏 ¡Bien hecho, ${nombre}! Has cerrado con éxito la OIT ${oit} con todos sus entregables al 100%. Tu compromiso con la calidad no pasa desapercibido. ¡Felicidades! 🚀`,
+  (nombre, oit) => `🎊 ${nombre}, otro trabajo completado al 100% — OIT ${oit}. Tu esfuerzo diario hace que todo funcione mejor. ¡Gracias por tu excelente desempeño! ⭐`,
+];
+
+function mensajeFelicitacionAleatorio(nombre, oit) {
+  const fn = MENSAJES_FELICITACION[Math.floor(Math.random() * MENSAJES_FELICITACION.length)];
+  return fn(nombre, oit);
+}
+
+async function notificarFelicitacion(oit) {
+  const r = DATA.find(d=>d.oit===oit);
+  if (!r || !r.tecnico) return;
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  if (!t) return;
+
+  const mensaje = mensajeFelicitacionAleatorio(t.nombre, oit);
+
+  // Correo de felicitación (reutiliza la misma plantilla EmailJS, con texto de felicitación en los campos)
+  if (t.email && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email:     t.email,
+        to_name:      t.nombre,
+        from_name:    'SPSA Dashboard - elvis.arci@gmail.com',
+        reply_to:     REMITENTE,
+        subject:      `🎉 ¡Felicitaciones! OIT ${oit} completada al 100%`,
+        oit:          oit,
+        sfa:          r.sfa,
+        cliente:      '🎊 ¡Trabajo completado con éxito! 🎊',
+        tipo_oit:     'FELICITACIÓN',
+        direccion:    r.direccion,
+        distrito:     r.distrito,
+        departamento: r.departamento,
+        fecha:        r.fecha,
+        dias_txt:     '✅ Completado',
+        horario:      '—',
+        bw:           '—',
+        cambio_cpe:   '—',
+        maps_link:    `https://www.google.com/maps?q=${r.lat},${r.lng}`,
+        tecnico:      t.nombre,
+        message:      mensaje
+      });
+    } catch(e) { console.error('Error enviando correo de felicitación:', e); }
+  }
+
+  // WhatsApp de felicitación
+  if (t.cel && t.wa_key) {
+    const msgEnc = encodeURIComponent(mensaje);
+    const num = t.cel.replace(/[^0-9]/g,'');
+    fetch(`https://api.callmebot.com/whatsapp.php?phone=${num}&text=${msgEnc}&apikey=${t.wa_key}`).catch(()=>{});
+  }
+
+  registrarAuditoria(`Se envió felicitación automática a ${t.nombre} por completar OIT ${oit} al 100%`, oit);
+}
+
+// ===== ENVÍO AUTOMÁTICO VIA CALLMEBOT =====
+function enviarWA(oit) {
+  const r = DATA.find(d=>d.oit===oit);
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  const msg = encodeURIComponent(window.__msgCache[oit]);
+  const num = t.cel.replace(/[^0-9]/g,'');
+  window.open(`https://api.callmebot.com/whatsapp.php?phone=${num}&text=${msg}&apikey=${t.wa_key}`, '_blank');
+}
+
+// ===== NOTIFICACIÓN COMPLETA (correo + WA en un solo click) =====
+const __notifEnCurso = {}; // evita doble envío si se dispara más de una vez para la misma OIT
+
+async function enviarNotificacionCompleta(oit) {
+  if (__notifEnCurso[oit]) { return; } // ya se está enviando (o se acaba de enviar) para esta OIT
+  __notifEnCurso[oit] = true;
+  setTimeout(() => { delete __notifEnCurso[oit]; }, 5000); // libera el bloqueo a los 5s para permitir reenvíos manuales posteriores
+
+  const btn = document.getElementById('btn-enviar-todo-'+oit);
+  const log = document.getElementById('notif-log-'+oit);
+  if (btn) { btn.disabled=true; btn.textContent='Enviando...'; }
+
+  const r = DATA.find(d=>d.oit===oit);
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  const resultados = [];
+
+  // Enviar correo
+  if (t && t.email && EMAILJS_SERVICE_ID) {
+    const res = await enviarCorreo(oit);
+    resultados.push(res.ok ? `✅ Correo → ${t.email}` : `❌ Correo: ${res.msg}`);
+  } else if (t && t.email) {
+    resultados.push('⚪ Correo: EmailJS no configurado (abre Notificaciones → Pegar claves EmailJS)');
+  } else {
+    resultados.push('⚪ Correo: técnico sin email registrado');
+  }
+
+  // Enviar WhatsApp
+  if (t && t.cel && t.wa_key) {
+    enviarWA(oit);
+    resultados.push(`✅ WhatsApp → ${t.cel}`);
+  } else if (t && t.cel) {
+    const waLink = `https://wa.me/${t.cel.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(window.__msgCache[oit])}`;
+    resultados.push(`📱 WhatsApp: <a href="${waLink}" target="_blank" style="color:#6ee7b7;">Abrir chat (sin API Key)</a>`);
+  } else {
+    resultados.push('⚪ WhatsApp: técnico sin celular registrado');
+  }
+
+  // Enviar Solicitud de Equipo (Excel) vía Apps Script
+  if (APPS_SCRIPT_URL) {
+    resultados.push('⏳ Generando Solicitud de Equipo (Excel)...');
+    if (log) log.innerHTML = resultados.map(r=>`<div style="padding:4px 0; border-bottom:1px solid #1e3a5f;">${r}</div>`).join('');
+    const resEq = await enviarSolicitudEquipo(oit);
+    resultados.pop();
+    resultados.push(resEq.ok ? `✅ Solicitud de Equipo (Excel) enviada a logística/aarana/mcamasca` : `❌ Solicitud de Equipo: ${resEq.msg}`);
+  } else {
+    resultados.push('⚪ Solicitud de Equipo: Apps Script no configurado (ver Notificaciones → Guía)');
+  }
+
+  if (log) log.innerHTML = resultados.map(r=>`<div style="padding:4px 0; border-bottom:1px solid #1e3a5f;">${r}</div>`).join('');
+  if (btn) { btn.disabled=false; btn.textContent='📤 Enviar de nuevo'; }
+}
+
+// ===== MODAL DE NOTIFICACION =====
+function abrirNotificar(oit, autoOpen) {
+  const r = DATA.find(d=>d.oit===oit);
+  const t = TECNICOS.find(x=>x.nombre===r.tecnico);
+  const dias = diasHasta(r.fecha);
+  const diasTxt = dias===0?'HOY':(dias===1?'MAÑANA':(dias>0?`en ${dias} días`:`hace ${Math.abs(dias)} días (VENCIDO)`));
+  const cliente_txt = r.cliente.includes('HARD') ? 'COMPAÑIA HARD DISCOUNT S.A.C.' : 'SUPERMERCADOS PERUANOS S.P.S.A.';
+
+  const mensaje = `🔔 NUEVA ASIGNACION - SPSA DASHBOARD
+
+OIT: ${r.oit}
+SFA: ${r.sfa}
+Cliente: ${cliente_txt}
+Tipo: ${r.tipo_oit}
+Dirección: ${r.direccion}
+Distrito: ${r.distrito}, ${r.departamento}
+Fecha de migración: ${r.fecha} (${diasTxt})
+Horario: ${r.horario}
+BW: ${r.bw}
+Cambio CPE: ${r.cambio_cpe}
+Ubicación: https://www.google.com/maps?q=${r.lat},${r.lng}
+
+Remitente: elvis.arci@gmail.com`;
+
+  window.__msgCache = window.__msgCache || {};
+  window.__msgCache[oit] = mensaje;
+
+  let html = '';
+  if (!r.tecnico) {
+    html = `<div class="empty">Este trabajo no tiene técnico asignado.<br><small style="color:#64748b;">Asigna un técnico primero desde la tabla.</small></div>`;
+  } else if (!t) {
+    html = `<div class="empty">Técnico "${r.tecnico}" no encontrado.<br><small>Recarga la página.</small></div>`;
+  } else {
+    const ejsOK = EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY;
+    html = `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; background:#0f1923; padding:10px 14px; border-radius:8px;">
+        <div>
+          <div style="font-size:0.95rem; font-weight:700; color:#93c5fd;">👤 ${t.nombre}</div>
+          <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">
+            ${t.email ? '✉️ '+t.email : '<span style="color:#f87171">Sin correo</span>'} &nbsp;
+            ${t.cel ? '📱 '+t.cel : '<span style="color:#f87171">Sin celular</span>'}
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#0f1923; border:1px solid #1e3a5f; border-radius:8px; padding:12px; font-size:0.78rem; white-space:pre-wrap; margin-bottom:14px; max-height:220px; overflow-y:auto; line-height:1.6;">${mensaje}</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">
+        <div style="background:#0f1923; padding:8px 12px; border-radius:6px; border-left:3px solid ${t.email && ejsOK ? '#059669' : '#64748b'};">
+          <div style="font-weight:700; margin-bottom:2px;">📧 Correo</div>
+          <div style="color:#94a3b8;">${t.email ? t.email : 'Sin email'} ${ejsOK ? '· EmailJS listo ✅' : '· <span style=\'color:#f97316\'>EmailJS no configurado</span>'}</div>
+        </div>
+        <div style="background:#0f1923; padding:8px 12px; border-radius:6px; border-left:3px solid ${t.cel ? (t.wa_key ? '#059669' : '#d97706') : '#64748b'};">
+          <div style="font-weight:700; margin-bottom:2px;">📱 WhatsApp</div>
+          <div style="color:#94a3b8;">${t.cel ? t.cel : 'Sin celular'} ${t.wa_key ? '· API Key ✅' : (t.cel ? '· Sin API Key (se abrirá WhatsApp Web)' : '')}</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <button id="btn-enviar-todo-${oit}" class="btn btn-green" onclick="enviarNotificacionCompleta('${oit}')">
+          📤 Enviar Correo + WhatsApp
+        </button>
+        <button class="btn btn-gray" onclick="copiarMensaje('${oit}')">📋 Copiar mensaje</button>
+        ${!ejsOK ? `<button class="btn btn-blue" onclick="cerrarModal('modalNotificar'); document.querySelector('[onclick*=\\'setTab(\\'notif\\'\\']').click(); setTimeout(()=>document.getElementById('modalEmailJS').classList.add('open'),200)">⚙️ Configurar EmailJS</button>` : ''}
+      </div>
+
+      <div id="notif-log-${oit}" style="font-size:0.78rem; color:#94a3b8;"></div>
+
+      ${!t.email && !t.cel ? '<div style="margin-top:8px; font-size:0.75rem; color:#f87171; background:#2a1a1a; padding:8px 12px; border-radius:6px;">⚠️ Este técnico no tiene correo ni celular registrado. Edítalo en "Carga de Técnicos".</div>' : ''}
+    `;
+  }
+
+  document.getElementById('notificar-content').innerHTML = html;
+  document.getElementById('modalNotificar').classList.add('open');
+
+  // Auto-enviar si se acaba de asignar el trabajo
+  if (autoOpen && t && (t.email || t.cel)) {
+    setTimeout(() => enviarNotificacionCompleta(oit), 400);
+  }
+}
+
+function copiarMensaje(oit) {
+  navigator.clipboard.writeText(window.__msgCache[oit] || '');
+  alert('Mensaje copiado al portapapeles');
+}
+
+// ==================== INIT ====================
+const fbReady = initFirebase();
+initAuth();
+</script>
+</div><!-- /appContainer -->
+</body></html>

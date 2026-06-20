@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPSA – Monitor de Operaciones</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060d1a;background:linear-gradient(135deg,#060d1a,#0a1530,#060d1a,#081224);background-size:300% 300%;animation:bgBreathe 18s ease infinite;color:#e0e6ef;font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+@keyframes bgBreathe{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+#particleCanvas{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1;pointer-events:none;opacity:0.85;display:block}
+.topbar,.page{position:relative;z-index:5}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#0a1220}
+::-webkit-scrollbar-thumb{background:#1d4ed8;border-radius:3px}
+
+/* SCAN LINE EFFECT */
+body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,255,0.01) 2px,rgba(0,255,255,0.01) 4px);pointer-events:none;z-index:1000}
+
+/* TOPBAR */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;min-height:54px;background:rgba(6,13,26,0.95);border-bottom:1px solid #0f3460;position:relative;flex-wrap:nowrap;gap:8px}
+.topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#00d4ff,#2563eb,#00d4ff,transparent);animation:scanH 4s linear infinite}
+@keyframes scanH{0%{opacity:0.3}50%{opacity:1}100%{opacity:0.3}}
+
+.logo{font-size:1.05rem;font-weight:900;letter-spacing:0.08em;white-space:nowrap}
+.logo .sp{color:#00d4ff;text-shadow:0 0 10px #00d4ff88}
+.logo .sa{color:#fff}
+.logo .mon{color:#2563eb;font-size:0.75rem;margin-left:4px;letter-spacing:0.15em;vertical-align:middle}
+.btn-back{background:rgba(37,99,235,0.15);border:1px solid #2563eb44;color:#60a5fa;padding:5px 12px;border-radius:6px;font-size:0.72rem;cursor:pointer;text-decoration:none;white-space:nowrap;transition:0.2s}
+.btn-back:hover{background:rgba(37,99,235,0.3);border-color:#2563eb}
+
+/* WEATHER INTERACTIVE */
+.weather-block{display:flex;align-items:center;gap:10px;background:rgba(0,212,255,0.06);border:1px solid #00d4ff22;border-radius:12px;padding:8px 16px;cursor:default;transition:0.3s;position:relative}
+.weather-block:hover{background:rgba(0,212,255,0.1);border-color:#00d4ff55;box-shadow:0 0 20px rgba(0,212,255,0.15)}
+.w-icon{font-size:2rem;filter:drop-shadow(0 0 8px rgba(0,212,255,0.6));animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.w-info{}
+.w-temp{font-size:1.4rem;font-weight:800;color:#00d4ff;line-height:1;text-shadow:0 0 12px #00d4ff66}
+.w-desc{font-size:0.65rem;color:#94a3b8;margin-top:1px}
+.w-badge{position:absolute;top:-6px;right:-6px;background:#00d4ff;color:#060d1a;font-size:0.55rem;font-weight:800;padding:2px 5px;border-radius:6px;letter-spacing:0.05em}
+
+/* CLOCK */
+.clock-block{text-align:right}
+.clock-time{font-size:1.7rem;font-weight:900;color:#fff;letter-spacing:0.08em;font-variant-numeric:tabular-nums;text-shadow:0 0 20px rgba(37,99,235,0.5);line-height:1}
+.clock-cursor{color:#00d4ff;animation:cursorBlink 1s steps(2) infinite;margin-left:2px}
+@keyframes cursorBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.clock-date{font-size:0.68rem;color:#64748b;margin-top:2px}
+
+/* PAGE */
+.page{padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+
+/* KPI ROW */
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.kpi{background:linear-gradient(135deg,#0d1f3c,#0a1525);border-radius:12px;padding:14px 16px;border:1px solid;position:relative;overflow:hidden;transition:transform 0.3s, box-shadow 0.3s;animation:panelIn 0.6s ease backwards}
+.kpi:nth-child(1){animation-delay:0s}
+.kpi:nth-child(2){animation-delay:0.05s}
+.kpi:nth-child(3){animation-delay:0.1s}
+.kpi:nth-child(4){animation-delay:0.15s}
+.kpi:nth-child(5){animation-delay:0.2s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc)}
+.kpi::after{content:'';position:absolute;top:-40px;right:-40px;width:100px;height:100px;border-radius:50%;background:var(--kc);opacity:0.06}
+.kpi .k-num{font-size:2.2rem;font-weight:900;line-height:1;color:var(--kc);text-shadow:0 0 20px color-mix(in srgb,var(--kc) 40%,transparent)}
+.kpi .k-lbl{font-size:0.65rem;color:#64748b;margin-top:4px;text-transform:uppercase;letter-spacing:0.08em}
+.kpi .k-sub{font-size:0.7rem;margin-top:6px;font-weight:600;color:var(--kc);opacity:0.7}
+.kpi-icon{position:absolute;top:12px;right:14px;font-size:1.4rem;opacity:0.3}
+
+/* MAIN ROW */
+.row2{display:grid;grid-template-columns:1.6fr 1fr;gap:12px}
+.row3{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:12px}
+
+/* PANEL */
+.panel{background:linear-gradient(135deg,#0d1f3c,#0a1525);border-radius:12px;padding:14px 16px;border:1px solid #0f3460;position:relative;overflow:hidden;animation:panelIn 0.6s ease backwards;transition:transform 0.3s, box-shadow 0.3s}
+.panel:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,212,255,0.08)}
+@keyframes panelIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.page>.kpi-row{animation-delay:0s}
+.page>.row2:nth-of-type(2){animation:none}
+.row2 .panel:nth-child(1){animation-delay:0.05s}
+.row2 .panel:nth-child(2){animation-delay:0.1s}
+.row3 .panel:nth-child(1){animation-delay:0.15s}
+.row3 .panel:nth-child(2){animation-delay:0.2s}
+.row3 .panel:nth-child(3){animation-delay:0.25s}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#00d4ff44,transparent)}
+.pt{font-size:0.72rem;font-weight:700;color:#00d4ff;margin-bottom:10px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:0.08em}
+.live{width:6px;height:6px;background:#22c55e;border-radius:50%;animation:blink 1.5s infinite;box-shadow:0 0 6px #22c55e}
+@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 6px #22c55e}50%{opacity:0.3;box-shadow:none}}
+
+/* MAP */
+.map-wrap{position:relative;border-radius:8px;overflow:hidden}
+#map{width:100%;height:300px;border-radius:8px;filter:brightness(1.1) contrast(1.05)}
+.radar-sweep{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:400;border-radius:8px;overflow:hidden}
+.radar-sweep::before{content:'';position:absolute;top:50%;left:50%;width:200%;height:200%;background:conic-gradient(from 0deg, transparent 0deg, rgba(0,212,255,0.25) 20deg, transparent 45deg, transparent 360deg);transform-origin:center;animation:radarSpin 5s linear infinite;transform:translate(-50%,-50%)}
+@keyframes radarSpin{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+.leaflet-marker-pane, .leaflet-marker-icon{overflow:visible !important}
+.map-marker-no-clip{background:transparent !important;border:none !important}
+@keyframes pulseRing{0%{transform:scale(1);opacity:0.8}100%{transform:scale(2.6);opacity:0}}
+@keyframes pulseRingSmall{0%{transform:scale(1);opacity:0.6}100%{transform:scale(3);opacity:0}}
+
+/* TODAY TABLE */
+.today-table{width:100%;border-collapse:collapse;font-size:0.73rem}
+.today-table th{color:#475569;padding:5px 7px;text-align:left;border-bottom:1px solid #0f3460;font-weight:600;font-size:0.63rem;text-transform:uppercase;letter-spacing:0.05em}
+.today-table td{padding:6px 7px;border-bottom:1px solid #0a1525}
+.today-table tr:hover td{background:rgba(37,99,235,0.08)}
+.row-fadein{opacity:0;animation:rowFade 0.6s ease forwards}
+@keyframes rowFade{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+.badge{display:inline-block;padding:2px 8px;border-radius:8px;font-size:0.62rem;font-weight:700}
+.b-pend{background:#78350f44;color:#fcd34d;border:1px solid #d9770644}
+.b-proc{background:#4c1d9544;color:#c4b5fd;border:1px solid #7c3aed44}
+.b-comp{background:#06443b44;color:#6ee7b7;border:1px solid #05966944}
+.b-venc{background:#7f1d1d44;color:#fca5a5;border:1px solid #dc262644}
+
+/* DONUT */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut-canvas{flex:1;max-height:200px}
+.donut-legend{display:flex;flex-direction:column;gap:8px;min-width:120px}
+.dl-item{display:flex;align-items:center;gap:6px;font-size:0.72rem}
+.dl-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.dl-num{margin-left:auto;font-weight:700}
+
+/* TECH CARDS */
+.tech-list{display:flex;flex-direction:column;gap:6px;max-height:250px;overflow-y:auto}
+.tcard{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 12px;border:1px solid;display:flex;align-items:center;gap:10px;transition:0.2s}
+.tcard:hover{background:rgba(37,99,235,0.1)}
+.tcard-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0;border:2px solid}
+.tcard-body{flex:1;min-width:0}
+.tcard-name{font-size:0.77rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcard-stats{font-size:0.62rem;color:#64748b;margin-top:1px}
+.tcard-bar{height:3px;background:#1a2533;border-radius:2px;margin-top:4px;overflow:hidden}
+.tcard-fill{height:100%;border-radius:2px;transition:width 1.1s cubic-bezier(0.22,1,0.36,1);position:relative;overflow:hidden}
+.tcard-fill::after{content:'';position:absolute;top:0;left:0;height:100%;width:30%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent);animation:shine 2.5s ease-in-out infinite}
+@keyframes shine{0%{transform:translateX(-150%)}100%{transform:translateX(450%)}}
+.tcard{transition:0.3s, border-color 0.3s}
+.tcard.flash{animation:flashGlow 1.2s ease}
+@keyframes flashGlow{0%{box-shadow:0 0 0 rgba(34,197,94,0)}30%{box-shadow:0 0 24px rgba(34,197,94,0.6)}100%{box-shadow:0 0 0 rgba(34,197,94,0)}}
+
+.spark-toast{background:linear-gradient(135deg,#064e3b,#022c22);border:1px solid #22c55e66;border-radius:10px;padding:10px 16px;font-size:0.75rem;color:#6ee7b7;box-shadow:0 4px 20px rgba(34,197,94,0.3);animation:toastIn 0.4s ease, toastOut 0.5s ease 3.5s forwards;display:flex;align-items:center;gap:8px}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastOut{to{opacity:0;transform:translateX(40px)}}
+.spark-emoji{animation:sparkPop 0.6s ease}
+@keyframes sparkPop{0%{transform:scale(0) rotate(0)}60%{transform:scale(1.3) rotate(20deg)}100%{transform:scale(1) rotate(0)}}
+
+/* ANILLO DE PROGRESO CIRCULAR ANIMADO */
+.progress-ring-wrap{position:relative;width:72px;height:72px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:9px}
+.progress-ring-svg{position:absolute;top:0;left:0;width:100%;height:100%;transform:rotate(-90deg)}
+.progress-ring-bg{fill:none;stroke:#0f3460;stroke-width:5}
+.progress-ring-fill{fill:none;stroke:url(#ringGradient);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset 1.2s cubic-bezier(0.22,1,0.36,1);filter:drop-shadow(0 0 6px rgba(0,212,255,0.7))}
+.progress-ring-spin{position:absolute;top:-4px;left:-4px;width:calc(100% + 8px);height:calc(100% + 8px);border-radius:50%;border:1px dashed rgba(0,212,255,0.25);animation:ringSpin 8s linear infinite}
+.progress-ring-spin2{position:absolute;top:-9px;left:-9px;width:calc(100% + 18px);height:calc(100% + 18px);border-radius:50%;border:1px dotted rgba(56,189,248,0.18);animation:ringSpinRev 14s linear infinite}
+@keyframes ringSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes ringSpinRev{from{transform:rotate(360deg)}to{transform:rotate(0deg)}}
+.progress-ring-center{position:relative;z-index:2;text-align:center}
+.progress-ring-pct{font-size:1.15rem;font-weight:900;color:#00d4ff;line-height:1;text-shadow:0 0 10px rgba(0,212,255,0.7)}
+.progress-ring-lbl{font-size:0.5rem;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-top:1px}
+.progress-ring-pulse{position:absolute;top:50%;left:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;border:2px solid #00d4ff;animation:ringPulse 2.2s ease-out infinite;opacity:0}
+@keyframes ringPulse{0%{transform:scale(0.85);opacity:0.5}100%{transform:scale(1.25);opacity:0}}
+.ring-celebrate .progress-ring-fill{animation:ringCelebrateFlash 1.2s ease}
+.ring-celebrate .progress-ring-pct{animation:ringCelebrateScale 1.2s ease}
+@keyframes ringCelebrateFlash{0%{filter:drop-shadow(0 0 6px rgba(0,212,255,0.7))}40%{filter:drop-shadow(0 0 18px rgba(34,197,94,1))}100%{filter:drop-shadow(0 0 6px rgba(0,212,255,0.7))}}
+@keyframes ringCelebrateScale{0%{transform:scale(1)}40%{transform:scale(1.25);color:#6ee7b7}100%{transform:scale(1)}}
+.tcard-pct{font-size:0.8rem;font-weight:800;flex-shrink:0}
+
+/* DEPT */
+.dept-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #0a1525}
+.dept-item:last-child{border-bottom:none}
+.dept-name{font-size:0.75rem;color:#94a3b8;width:100px;flex-shrink:0}
+.dept-bar-wrap{flex:1;height:6px;background:#0a1525;border-radius:3px;overflow:hidden}
+.dept-bar-fill{height:100%;border-radius:3px;transition:width 0.8s}
+.dept-count{font-size:0.72rem;font-weight:700;min-width:24px;text-align:right}
+.dept-pct{font-size:0.63rem;color:#6ee7b7;min-width:30px;text-align:right}
+.dept-climate{font-size:0.7rem;color:#94a3b8;min-width:55px;text-align:right;white-space:nowrap}
+
+/* FRASES */
+.frase-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:180px;text-align:center;padding:20px}
+.frase-icon{font-size:2.5rem;margin-bottom:12px;animation:float 4s ease-in-out infinite}
+.frase-text{font-size:0.92rem;color:#e0e6ef;line-height:1.6;font-style:italic;max-width:340px;text-shadow:0 0 20px rgba(0,212,255,0.2)}
+.frase-author{font-size:0.65rem;color:#475569;margin-top:8px;text-transform:uppercase;letter-spacing:0.1em}
+.frase-counter{font-size:0.6rem;color:#1e3a5f;margin-top:10px}
+.frase-dots{display:flex;gap:5px;justify-content:center;margin-top:8px}
+.frase-dot{width:5px;height:5px;border-radius:50%;background:#1e3a5f;transition:0.3s}
+.frase-dot.act{background:#00d4ff;box-shadow:0 0 6px #00d4ff}
+
+/* CHART dark */
+canvas{max-height:200px}
+
+/* NEON BORDER */
+.neon-b1{border-color:#2563eb44}
+.neon-b2{border-color:#d9770644}
+.neon-b3{border-color:#7c3aed44}
+.neon-b4{border-color:#05966944}
+.neon-b5{border-color:#dc262644}
+
+/* CORNER DECORATION */
+.panel::after{content:'';position:absolute;bottom:0;right:0;width:40px;height:40px;border-bottom:1px solid #00d4ff22;border-right:1px solid #00d4ff22;border-radius:0 0 12px 0}
+
+/* EMPTY STATE */
+.empty-state{display:flex;align-items:center;justify-content:center;height:180px;color:#1e3a5f;font-size:0.8rem;flex-direction:column;gap:8px}
+.empty-icon{font-size:2rem;opacity:0.3}
+</style>
+</head>
+<body>
+
+<canvas id="particleCanvas"></canvas>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="logo"><span class="sp">SPSA</span><span class="sa"> FIELD</span><span class="mon">◈ MONITOR</span></div>
+    <a class="btn-back" href="index.html">← Dashboard</a>
+    <button class="btn-back" style="cursor:pointer" onclick="showSparkToast({oit:'TEST-001', tecnico:'Técnico de Prueba'})">🧪 Probar logro</button>
+  </div>
+
+  <div class="weather-block" id="weatherBlock">
+    <div class="w-badge">LIMA</div>
+    <div class="w-icon" id="wIcon">🌡</div>
+    <div class="w-info">
+      <div class="w-temp" id="wTemp">--°C</div>
+      <div class="w-desc" id="wDesc">Cargando clima...</div>
+    </div>
+  </div>
+
+  <div class="progress-ring-wrap" title="Progreso general completado">
+    <div class="progress-ring-spin2"></div>
+    <div class="progress-ring-spin"></div>
+    <div class="progress-ring-pulse"></div>
+    <svg class="progress-ring-svg" viewBox="0 0 72 72">
+      <defs>
+        <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00d4ff"/>
+          <stop offset="100%" stop-color="#2563eb"/>
+        </linearGradient>
+      </defs>
+      <circle class="progress-ring-bg" cx="36" cy="36" r="30"/>
+      <circle class="progress-ring-fill" id="ringFill" cx="36" cy="36" r="30" stroke-dasharray="188.5" stroke-dashoffset="188.5"/>
+    </svg>
+    <div class="progress-ring-center">
+      <div class="progress-ring-pct" id="ringPct">0%</div>
+      <div class="progress-ring-lbl">avance</div>
+    </div>
+  </div>
+
+  <div class="clock-block">
+    <div class="clock-time"><span id="clock">--:--:--</span><span class="clock-cursor">▌</span></div>
+    <div class="clock-date" id="dateLbl">Lima, Perú</div>
+  </div>
+</div>
+
+<!-- PAGE -->
+<div class="page">
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi neon-b1" style="--kc:#00d4ff">
+      <span class="kpi-icon">📡</span>
+      <div class="k-num" id="kTotal">125</div>
+      <div class="k-lbl">Total OITs</div>
+      <div class="k-sub">5 departamentos</div>
+    </div>
+    <div class="kpi neon-b2" style="--kc:#fcd34d">
+      <span class="kpi-icon">⏳</span>
+      <div class="k-num" id="kPend">—</div>
+      <div class="k-lbl">Pendientes</div>
+      <div class="k-sub" id="kPendPct">—</div>
+    </div>
+    <div class="kpi neon-b3" style="--kc:#c4b5fd">
+      <span class="kpi-icon">🔄</span>
+      <div class="k-num" id="kProc">—</div>
+      <div class="k-lbl">En Proceso</div>
+      <div class="k-sub" id="kProcPct">—</div>
+    </div>
+    <div class="kpi neon-b4" style="--kc:#6ee7b7">
+      <span class="kpi-icon">✅</span>
+      <div class="k-num" id="kComp">—</div>
+      <div class="k-lbl">Completados</div>
+      <div class="k-sub" id="kCompPct">—</div>
+    </div>
+    <div class="kpi neon-b5" style="--kc:#f87171">
+      <span class="kpi-icon">📅</span>
+      <div class="k-num" id="kHoy">—</div>
+      <div class="k-lbl">OITs Hoy</div>
+      <div class="k-sub" id="kHoySub">—</div>
+    </div>
+  </div>
+
+  <!-- ROW 2: MAPA + HOY -->
+  <div class="row2">
+    <div class="panel">
+      <div class="pt">🗺 Mapa de operaciones del día <span class="live"></span></div>
+      <div class="map-wrap">
+        <div id="map"></div>
+        <div class="radar-sweep"></div>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:0.65rem;flex-wrap:wrap">
+        <span>🔴 Pendiente</span><span>🟡 En proceso</span><span>🟢 Completado</span><span>⚫ Otras OITs</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pt">📋 Programación de hoy <span class="live"></span></div>
+      <div style="max-height:320px;overflow-y:auto">
+        <table class="today-table">
+          <thead><tr><th>OIT</th><th>Distrito</th><th>Horario</th><th>Técnico</th><th>Estado</th></tr></thead>
+          <tbody id="todayTbody"><tr><td colspan="5"><div class="empty-state"><span class="empty-icon">📡</span>Cargando...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: GRÁFICA + DONUT + DEPT -->
+  <div class="row3">
+    <div class="panel">
+      <div class="pt">📈 OITs por semana</div>
+      <canvas id="chartSemana"></canvas>
+    </div>
+    <div class="panel" style="display:flex;flex-direction:column">
+      <div class="pt">⬤ Estado general <span class="live"></span></div>
+      <div class="donut-wrap" style="flex:1;align-items:center">
+        <div style="flex:1.2;position:relative">
+          <canvas id="chartEstado" style="max-height:210px"></canvas>
+          <div id="donutCenter" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
+            <div id="donutPct" style="font-size:1.6rem;font-weight:900;color:#00d4ff;line-height:1">0%</div>
+            <div style="font-size:0.6rem;color:#475569;text-transform:uppercase;letter-spacing:0.05em">completado</div>
+          </div>
+        </div>
+        <div class="donut-legend" id="donutLegend"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pt">🌎 Por departamento</div>
+      <div id="deptList"></div>
+    </div>
+  </div>
+
+  <!-- ROW 4: TÉCNICOS + FRASE -->
+  <div class="row2">
+    <div class="panel">
+      <div class="pt">👤 Desempeño de técnicos <span class="live"></span></div>
+      <div class="tech-list" id="techGrid">
+        <div class="empty-state"><span class="empty-icon">👤</span>Cargando técnicos...</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="pt">💡 Frase del día</div>
+      <div class="frase-panel">
+        <div class="frase-icon" id="fraseIcon">🚀</div>
+        <div class="frase-text" id="fraseText">Cargando...</div>
+        <div class="frase-author" id="fraseAuthor"></div>
+        <div class="frase-dots" id="fraseDots"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// FIREBASE
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAOf8RZQgYUweOrCZ_vyNhiUqaXvMQNsB4",
+  authDomain: "spsa-dashboard.firebaseapp.com",
+  projectId: "spsa-dashboard",
+  storageBucket: "spsa-dashboard.firebasestorage.app",
+  messagingSenderId: "570004026052",
+  appId: "1:570004026052:web:1000319748a7d2c9a78f91"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ============================================================
+// DATA
+// ============================================================
+const DATA_RAW = [{"n":1,"oit":"S479397","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. N Lte. 5 Pueblo Joven Villa El Salvador Sector 3","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.22117591,"lng":-76.93187143,"fecha":"2026-06-15","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":2,"oit":"S479360","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. A Lte. 9 Pueblo Joven Villa El Salvador Sector 3","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.21243246,"lng":-76.93459589,"fecha":"2026-06-15","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":3,"oit":"S479407","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Jorge Chávez Nro. S/N Mz. F Lte. 17 Grupo 4A Sector 6","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.21794387,"lng":-76.95077306,"fecha":"2026-06-16","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":4,"oit":"S479401","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. F Lte. 17 Pueblo Joven Villa El Salvador Sector 1","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.201471,"lng":-76.950357,"fecha":"2026-06-16","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":5,"oit":"S479386","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. N Lte. 4 Grupo 19 Sector 1","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.1985355,"lng":-76.95202097,"fecha":"2026-06-16","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":6,"oit":"S479345","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Pastor Sevilla Nro. S/N Mz. D Lte. 7 Coop. Virgen Cocharcas","distrito":"Villa el Salvador","provincia":"Lima","departamento":"Lima","lat":-12.194071,"lng":-76.960639,"fecha":"2026-06-16","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":7,"oit":"S479421","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Túpac Amaru de Villa Nro. S/N Mz. E5 Lte. 2","distrito":"Chorrillos","provincia":"Lima","departamento":"Lima","lat":-12.195521,"lng":-76.983578,"fecha":"2026-06-17","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":8,"oit":"S479422","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. 24 de Octubre Nro. S/N Urb. Túpac Amaru de Villa","distrito":"Chorrillos","provincia":"Lima","departamento":"Lima","lat":-12.196006,"lng":-76.983663,"fecha":"2026-06-17","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":9,"oit":"S479399","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. César Canevaro Nro. 460 Mz. G Lte. 15 Urb. San Juan Zona C","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.16404961,"lng":-76.96903564,"fecha":"2026-06-17","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":10,"oit":"S479394","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. IV Lte. 18 Urb. San Juan","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.166644,"lng":-76.974351,"fecha":"2026-06-17","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":11,"oit":"S480796","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. El Paraíso 192 Mz. U Lt. 2 A.H. El Paraíso","distrito":"Villa Maria del Triunfo","provincia":"Lima","departamento":"Lima","lat":-12.1472687,"lng":-76.9349224,"fecha":"2026-06-18","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":12,"oit":"S479373","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. José Carlos Mariátegui Nro. 878 Mz. D3 Lte. 4","distrito":"Villa Maria del Triunfo","provincia":"Lima","departamento":"Lima","lat":-12.15417368,"lng":-76.95222775,"fecha":"2026-06-18","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":13,"oit":"S479389","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. R3 Lte. 19 Pueblo Joven Pamplona Alta Sector Ollantay","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.13712302,"lng":-76.96304435,"fecha":"2026-06-18","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":14,"oit":"S479396","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. G2 Lte. 8 Parcela Juan A","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.15806913,"lng":-76.97335134,"fecha":"2026-06-18","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":15,"oit":"S479380","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Aguilar Segura Nro. S/N Mz. A Lte. 38 Pueblo Joven Juan Pablo II","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.157772,"lng":-76.984508,"fecha":"2026-06-19","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":16,"oit":"S479395","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. A Lte. 15 Coop. Héroes de San Juan Urb. San Juan","distrito":"San Juan de Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.15498,"lng":-76.977321,"fecha":"2026-06-19","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":17,"oit":"S479379","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. A Lte. 1 Urb. Viña del Mar","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.156026,"lng":-77.01504707,"fecha":"2026-06-19","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":18,"oit":"S479413","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Corbeta La Unión Nro. S/N Mz. A Lte. 16 Urb. Cercado","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.14564831,"lng":-77.00759764,"fecha":"2026-06-19","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":19,"oit":"S479352","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Próceres Nro. S/N Mz. B Lte. 24 Urb. Honor y Lealtad","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.15896781,"lng":-76.98842908,"fecha":"2026-06-22","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":20,"oit":"S479390","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Las Nazarenas Nro. 289","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.13135079,"lng":-76.98730528,"fecha":"2026-06-22","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":21,"oit":"S479429","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Santiago de Surco Nro. 3503 Tienda 000002 Urb. Liguria Sector 4","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.133308,"lng":-76.997638,"fecha":"2026-06-22","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":22,"oit":"S479355","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Mariscal Ramón Castilla Nro. 1408","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.13684695,"lng":-77.00485681,"fecha":"2026-06-22","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":23,"oit":"S479436","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Recavarren Nro. 1164 Lte. 22","distrito":"Surquillo","provincia":"Lima","departamento":"Lima","lat":-12.10969227,"lng":-77.02446113,"fecha":"2026-06-23","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":24,"oit":"S480798","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. República de Panamá 5481","distrito":"Surquillo","provincia":"Lima","departamento":"Lima","lat":-12.1186252,"lng":-77.0184337,"fecha":"2026-06-23","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":25,"oit":"S479437","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Tomasal Nro. 145 Mz. 10C","distrito":"Santiago de Surco","provincia":"Lima","departamento":"Lima","lat":-12.10828468,"lng":-76.9690975,"fecha":"2026-06-23","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":26,"oit":"S479369","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Fresnos Nro. 2005 Mz. H2 Lte. 13 Urb. Portada del Sol Etapa 3","distrito":"La Molina","provincia":"Lima","departamento":"Lima","lat":-12.112648,"lng":-76.936799,"fecha":"2026-06-24","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":27,"oit":"S479424","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Alameda del Corregidor Nro. 1779 Urb. Las Viñas de La Molina","distrito":"La Molina","provincia":"Lima","departamento":"Lima","lat":-12.10102238,"lng":-76.94946242,"fecha":"2026-06-24","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":28,"oit":"S479366","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Quechuas Nro. S/N Mz. V Lte. 14 Urb. Olimpo Etapa Cuarta","distrito":"Ate","provincia":"Lima","departamento":"Lima","lat":-12.074741,"lng":-76.979467,"fecha":"2026-06-24","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":29,"oit":"S479419","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Aymaras Nro. 337","distrito":"Ate","provincia":"Lima","departamento":"Lima","lat":-12.0749062,"lng":-76.98843692,"fecha":"2026-06-24","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":30,"oit":"S479406","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. 2 Nro. S/N Mz. F2 Lte. 1 Urb. San Antonio de Carapongo","distrito":"Lurigancho","provincia":"Lima","departamento":"Lima","lat":-12.002288,"lng":-76.872714,"fecha":"2026-06-25","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":31,"oit":"S479432","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Parque Cívico Santa Clara Nro. 286 Centro Comercial Qhatu Plaza","distrito":"Ate","provincia":"Lima","departamento":"Lima","lat":-12.01818434,"lng":-76.88379375,"fecha":"2026-06-25","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":32,"oit":"S479353","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. N Lte. 61 Urb. Tilda Zona 03","distrito":"Ate","provincia":"Lima","departamento":"Lima","lat":-12.03338572,"lng":-76.93859233,"fecha":"2026-06-25","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":33,"oit":"S479418","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. Las Dalias Nro. S/N Mz. Z Lte. 7 Asoc. Pro Vivienda Virgen del Carmen","distrito":"Ate","provincia":"Lima","departamento":"Lima","lat":-12.03748545,"lng":-76.92878899,"fecha":"2026-06-25","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":34,"oit":"S479375","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Separadora Industrial Nro. 3064","distrito":"La Molina","provincia":"Lima","departamento":"Lima","lat":-12.05833735,"lng":-76.94656073,"fecha":"2026-06-26","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":35,"oit":"S479367","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Constructores Nro. 1376 Mz. O Lte. 53","distrito":"La Molina","provincia":"Lima","departamento":"Lima","lat":-12.061265,"lng":-76.943025,"fecha":"2026-06-26","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":36,"oit":"S479356","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Chavín Nro. 398 Mz. M1 Lte. 16","distrito":"Santa Anita","provincia":"Lima","departamento":"Lima","lat":-12.03661269,"lng":-76.96756596,"fecha":"2026-06-26","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":37,"oit":"S479357","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Ruiseñores Nro. 388 Mz. R1 Lte. 28 Urb. Santa Anita","distrito":"Santa Anita","provincia":"Lima","departamento":"Lima","lat":-12.05228047,"lng":-76.96548326,"fecha":"2026-06-26","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":38,"oit":"S479354","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Madre Selva Nro. 184 Mz. O1 Lte. 36 Coop. Santa Rosa de Quives","distrito":"Santa Anita","provincia":"Lima","departamento":"Lima","lat":-12.05363294,"lng":-76.98069505,"fecha":"2026-06-29","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":39,"oit":"S479398","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Túpac Amaru Nro. 380 Mz. U2 Lte. 3","distrito":"Santa Anita","provincia":"Lima","departamento":"Lima","lat":-12.04497307,"lng":-76.9797208,"fecha":"2026-06-29","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":40,"oit":"S479381","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Algarrobos Nro. 518 Mz. I Lte. 10 Urb. Tayacaja","distrito":"El Agustino","provincia":"Lima","departamento":"Lima","lat":-12.03838,"lng":-76.992397,"fecha":"2026-06-29","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":41,"oit":"S479427","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. M Lte. 11 Pueblo Joven Cruz de Motupe","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-11.937909,"lng":-76.978187,"fecha":"2026-06-30","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":42,"oit":"S479346","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. República de Polonia Nro. 612 Urb. Canto Grande","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-11.97444462,"lng":-77.00252431,"fecha":"2026-06-30","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":43,"oit":"S479351","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. C Lte. 2 Urb. Canto Grande","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-11.97162,"lng":-77.006907,"fecha":"2026-06-30","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":44,"oit":"S479431","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. F Lte. 04 Urb. Santa Elizabeth Etapa 2DA","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-11.98422276,"lng":-77.01485711,"fecha":"2026-06-30","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":45,"oit":"S479425","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. 11 Nro. S/N Mz. O Lte. B-6","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-12.021971,"lng":-76.973687,"fecha":"2026-07-01","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":46,"oit":"S479348","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Las Coralinas Nro. 677 Coop. de Viviendas Las Flores","distrito":"San Juan de Lurigancho","provincia":"Lima","departamento":"Lima","lat":-12.009182,"lng":-77.011991,"fecha":"2026-07-01","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":47,"oit":"S479403","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Loreto Nro. 353 Urb. Chacra Colorada","distrito":"Breña","provincia":"Lima","departamento":"Lima","lat":-12.053326,"lng":-77.049098,"fecha":"2026-07-01","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":48,"oit":"S479426","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Pomabamba Nro. 201","distrito":"Breña","provincia":"Lima","departamento":"Lima","lat":-12.051956,"lng":-77.043536,"fecha":"2026-07-01","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":49,"oit":"S479382","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. General Borgoño Nro. 127","distrito":"Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.11869362,"lng":-77.03359907,"fecha":"2026-07-02","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":50,"oit":"S480808","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Calle José Gonzales 488","distrito":"Miraflores","provincia":"Lima","departamento":"Lima","lat":-12.12863044,"lng":-77.03002735,"fecha":"2026-07-02","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":51,"oit":"S479402","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. del Ejército Nro. 915","distrito":"Magdalena del Mar","provincia":"Lima","departamento":"Lima","lat":-12.100319,"lng":-77.062317,"fecha":"2026-07-02","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":52,"oit":"S479435","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Mariscal Toribio Luzuriaga Nro. 558","distrito":"Jesus Maria","provincia":"Lima","departamento":"Lima","lat":-12.076299,"lng":-77.048422,"fecha":"2026-07-02","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":53,"oit":"S479374","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Mariano Pastor Sevilla Nro. 177","distrito":"Pueblo Libre","provincia":"Lima","departamento":"Lima","lat":-12.07339371,"lng":-77.06506665,"fecha":"2026-07-03","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":54,"oit":"S479409","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Antonio José de Sucre Nro. 1158","distrito":"Pueblo Libre","provincia":"Lima","departamento":"Lima","lat":-12.08245348,"lng":-77.06714247,"fecha":"2026-07-03","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":55,"oit":"S479420","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Juan Valer Nro. 721","distrito":"Pueblo Libre","provincia":"Lima","departamento":"Lima","lat":-12.077344,"lng":-77.074531,"fecha":"2026-07-03","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":56,"oit":"S479416","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Mariano Cornejo Nro. 1456 Mz. A Lte. 27 Urb. Las Brisas","distrito":"Lima","provincia":"Lima","departamento":"Lima","lat":-12.067528,"lng":-77.066722,"fecha":"2026-07-03","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":57,"oit":"S479412","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. B10 Lte. 7 Urb. Condevilla Señor y Valdiviezo Etapa Segunda","distrito":"San Martin de Porres","provincia":"Lima","departamento":"Lima","lat":-12.02566936,"lng":-77.07546222,"fecha":"2026-07-06","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":58,"oit":"S479414","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Próceres Nro. 266 Mz. E-8 Lte. 25 Urb. Señor de Condevilla II Sector 37","distrito":"San Martin de Porres","provincia":"Lima","departamento":"Lima","lat":-12.018098,"lng":-77.086351,"fecha":"2026-07-06","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":59,"oit":"S479365","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Angélica Gamarra de León Velarde Nro. S/N Mz. D Lte. 7 Urb. El Trébol","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-12.00600995,"lng":-77.07057646,"fecha":"2026-07-06","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":60,"oit":"S479408","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Manuel Gonzales Prada Nro. S/N Mz. B Lte. 11 Urb. Villa Los Ángeles","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.99454579,"lng":-77.06806904,"fecha":"2026-07-06","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":61,"oit":"S479370","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Las Palmeras Nro. 3888 Lte. 17 Urb. Las Palmeras Etapa I","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.98939702,"lng":-77.07175584,"fecha":"2026-07-07","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":62,"oit":"S479371","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Santiago Antúnez de Mayolo Nro. 1259 Urb. Covida Etapa I","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.995417,"lng":-77.078222,"fecha":"2026-07-07","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":63,"oit":"S479372","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. G Lte. 4 Asoc. Vivienda Señor de los Milagros","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.98676278,"lng":-77.08756761,"fecha":"2026-07-07","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":64,"oit":"S479364","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Carlos Izaguirre Nro. S/N Mz. J Lte. 6 Urb. Cajabamba","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.99187028,"lng":-77.08155273,"fecha":"2026-07-07","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":65,"oit":"S480824","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. Pacasmayo Mz. F Lt. 16 Urb. Philadelphia I","distrito":"San Martin de Porres","provincia":"Lima","departamento":"Lima","lat":-11.993006,"lng":-77.111978,"fecha":"2026-07-08","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":66,"oit":"S479404","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Alisos Nro. S/N Mz. R Lte. 40 Asent. Hum. Los Jazmines del Naranjal","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.9829747,"lng":-77.07891312,"fecha":"2026-07-08","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":67,"oit":"S479376","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Próceres de Huandoy Nro. S/N Mz. G3 Lte. 7","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.975216,"lng":-77.082778,"fecha":"2026-07-08","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":68,"oit":"S479411","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. El Naranjal Nro. 1746","distrito":"San Martin de Porres","provincia":"Lima","departamento":"Lima","lat":-11.973746,"lng":-77.087084,"fecha":"2026-07-08","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":69,"oit":"S479383","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Río Marañón Nro. S/N Mz. N Lte. 4 Urb. Villa del Norte","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.97224629,"lng":-77.07195792,"fecha":"2026-07-09","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":70,"oit":"S479387","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Universitaria Nro. S/N Mz. T Lte. 5","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.968249,"lng":-77.074588,"fecha":"2026-07-09","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":71,"oit":"S480812","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Calle 29 Mz. H2 Lt. 17 Alameda Villa Sol","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.96980941,"lng":-77.08086748,"fecha":"2026-07-09","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":72,"oit":"S479417","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. Inca Yupanqui Nro. 570","distrito":"Independencia","provincia":"Lima","departamento":"Lima","lat":-11.97784642,"lng":-77.04742098,"fecha":"2026-07-09","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":73,"oit":"S479378","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. 2 de Octubre Nro. S/N Mz. J Lte. 23 Urb. Santa Ana","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.94891613,"lng":-77.0801526,"fecha":"2026-07-10","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":74,"oit":"S479400","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. Once Nro. S/N Mz. BBB5 Lte. 9 Urb. Pro Sector 5","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-11.93548431,"lng":-77.07706652,"fecha":"2026-07-10","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":75,"oit":"S479392","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Jr. 8 Nro. 400 Mz. H Lte. 2 Urb. Carabayllo","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.96581182,"lng":-77.05982902,"fecha":"2026-07-10","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":76,"oit":"S479430","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Túpac Amaru Nro. 181 Mz. U-1 Lte. 2","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.97136832,"lng":-77.05776489,"fecha":"2026-07-10","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":77,"oit":"S479385","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Carabayllo Nro. 1784","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.94482812,"lng":-77.05268124,"fecha":"2026-07-13","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":78,"oit":"S479391","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Víctor A. Belaúnde Este Nro. 533 Pueblo Joven El Carmen Zona 3","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.94055199,"lng":-77.04442958,"fecha":"2026-07-13","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":79,"oit":"S479377","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Túpac Amaru Nro. 6496","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.93487623,"lng":-77.04720164,"fecha":"2026-07-13","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":80,"oit":"S479347","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. Las Ciruelas Nro. 110","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.91149006,"lng":-77.04639474,"fecha":"2026-07-13","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":81,"oit":"S479349","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Universitaria Norte Nro. 10655 Mz. P Lte. 8 Urb. San Felipe Zona 8","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.90025,"lng":-77.039861,"fecha":"2026-07-14","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":82,"oit":"S479350","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. San Felipe Nro. 641 Urb. San Felipe","distrito":"Comas","provincia":"Lima","departamento":"Lima","lat":-11.90248164,"lng":-77.03850451,"fecha":"2026-07-14","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":83,"oit":"S479384","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. José Carlos Mariátegui Nro. S/N Mz. V Lte. 18 Urb. Lucyana","distrito":"Carabayllo","provincia":"Lima","departamento":"Lima","lat":-11.89440728,"lng":-77.03226594,"fecha":"2026-07-14","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":84,"oit":"S479388","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Caudivilla Nro. S/N Mz. R1 Lte. 04","distrito":"Carabayllo","provincia":"Lima","departamento":"Lima","lat":-11.8876197,"lng":-77.03644535,"fecha":"2026-07-14","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":85,"oit":"S479433","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. D1 Lte. 6 Urb. Santo Domingo Etapa 5","distrito":"Carabayllo","provincia":"Lima","departamento":"Lima","lat":-11.881981,"lng":-77.032828,"fecha":"2026-07-14","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":86,"oit":"S479363","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Ugarteche Nro. S/N Mz. B1 Lte. 28 Asoc. Santa Rosa","distrito":"Ventanilla","provincia":"Callao","departamento":"Lima","lat":-11.868094,"lng":-77.113213,"fecha":"2026-07-15","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":87,"oit":"S480811","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. San Judas Tadeo Mz. D Lt. 23","distrito":"Puente Piedra","provincia":"Lima","departamento":"Lima","lat":-11.83483729,"lng":-77.10863752,"fecha":"2026-07-15","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":88,"oit":"S480823","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. Buenos Aires 1655 Mz. L Lt. 28","distrito":"Puente Piedra","provincia":"Lima","departamento":"Lima","lat":-11.8537784,"lng":-77.0894214,"fecha":"2026-07-15","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":89,"oit":"S479428","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Famesa Nro. S/N Mz. B Lte. 13 Asoc. Tambo Inga","distrito":"Puente Piedra","provincia":"Lima","departamento":"Lima","lat":-11.88533941,"lng":-77.07013082,"fecha":"2026-07-16","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":90,"oit":"S479361","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. C1 Lte. 16 Urb. Los Portales de Chillon","distrito":"Puente Piedra","provincia":"Lima","departamento":"Lima","lat":-11.93543355,"lng":-77.08343045,"fecha":"2026-07-16","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":91,"oit":"S479393","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"C. Las Flores Nro. S/N Mz. D Lte. 01 Parcela Semi Rústica Shangrila","distrito":"Puente Piedra","provincia":"Lima","departamento":"Lima","lat":-11.91618592,"lng":-77.07822683,"fecha":"2026-07-16","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":92,"oit":"S479358","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. F Lte. 31 Asoc. Vivienda Brisas de Santa Rosa Urb. Brisas de Santa Rosa","distrito":"Callao","provincia":"Callao","departamento":"Lima","lat":-11.99015479,"lng":-77.10694727,"fecha":"2026-07-17","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":93,"oit":"S479410","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Asoc. de Viv. Trabajadores del Puerto del Callao Alamo 1","distrito":"Callao","provincia":"Callao","departamento":"Lima","lat":-12.00128792,"lng":-77.1076598,"fecha":"2026-07-17","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":94,"oit":"S479362","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Mz. D Lte. 1 Urb. Los Nardos","distrito":"Callao","provincia":"Callao","departamento":"Lima","lat":-12.0053069,"lng":-77.09929281,"fecha":"2026-07-17","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":95,"oit":"S479434","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. 01 Nro. 4676 Mz. E Lte. 42 Urb. El Bolívar","distrito":"Callao","provincia":"Callao","departamento":"Lima","lat":-12.020888,"lng":-77.09492,"fecha":"2026-07-17","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":96,"oit":"S479368","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. 1 Nro. 1213 Mz. P2 Lte. 18","distrito":"Bellavista","provincia":"Callao","departamento":"Lima","lat":-12.061188,"lng":-77.105059,"fecha":"2026-07-20","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":97,"oit":"S479359","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Julio C. Tello Nro. 209","distrito":"Carmen de la Legua Reynoso","provincia":"Callao","departamento":"Lima","lat":-12.04200223,"lng":-77.09690954,"fecha":"2026-07-20","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":98,"oit":"S480817","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Francisco Vidal 632","distrito":"Supe","provincia":"Barranca","departamento":"Lima","lat":-10.79661625,"lng":-77.71499626,"fecha":"2026-07-20","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":99,"oit":"S479415","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Carretera Antigua Panamericana Sur Nro. S/N Km 43","distrito":"Punta Hermosa","provincia":"Lima","departamento":"Lima","lat":-12.316723,"lng":-76.832416,"fecha":"2026-07-20","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":100,"oit":"S480826","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Jr. 28 de Julio 542 Mz. D1 Lt. 6","distrito":"Imperial","provincia":"Cañete","departamento":"Lima","lat":-13.061725,"lng":-76.351161,"fecha":"2026-07-21","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":101,"oit":"S479405","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. Los Alisos Nro. S/N Mz. P Lte. 22 Urb. Micaela Bastidas Etapa 1","distrito":"Los Olivos","provincia":"Lima","departamento":"Lima","lat":-12.15602388,"lng":-77.01504864,"fecha":"2026-07-21","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":102,"oit":"S480822","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Mz. C Lt. 6 Urb. Las Malvinas","distrito":"Yanahuara","provincia":"Arequipa","departamento":"Arequipa","lat":-16.3917109,"lng":-71.55397188,"fecha":"2026-07-21","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":103,"oit":"S479423","sfa":"545834","cliente":"SUPERMERCADOS PERUANOS SOCIEDAD ANONIMA 'O ' S.P.S.A.","tipo_oit":"ALTA","direccion":"Av. La Merced Nro. 113","distrito":"Arequipa","provincia":"Arequipa","departamento":"Arequipa","lat":-16.399463,"lng":-71.538078,"fecha":"2026-07-21","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":104,"oit":"S480818","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Arenales 127 Mz. A Sublote 01","distrito":"Ica","provincia":"Ica","departamento":"Ica","lat":-14.05960281,"lng":-75.73696608,"fecha":"2026-07-22","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":105,"oit":"S480825","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Calle Bolívar 640","distrito":"Ica","provincia":"Ica","departamento":"Ica","lat":-14.06857836,"lng":-75.72804717,"fecha":"2026-07-22","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":106,"oit":"S480803","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Obrera 1508 Mz. 39 Lt. 17","distrito":"Alto Selva Alegre","provincia":"Arequipa","departamento":"Arequipa","lat":-16.37479674,"lng":-71.51346294,"fecha":"2026-07-23","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":107,"oit":"S480821","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Pasaje Miguel Grau Mz. 38 Lt. 11","distrito":"Paucarpata","provincia":"Arequipa","departamento":"Arequipa","lat":-16.40831576,"lng":-71.48136062,"fecha":"2026-07-23","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":108,"oit":"S480797","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Prudencio Vidal Paz Soldán Lt. 204","distrito":"La Joya","provincia":"Arequipa","departamento":"Arequipa","lat":-16.42428718,"lng":-71.81869815,"fecha":"2026-07-23","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":109,"oit":"S480820","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Jr. María Parado de Bellido Mz. P Lt. 1","distrito":"Mollendo","provincia":"Islay","departamento":"Arequipa","lat":-17.02019883,"lng":-72.00514568,"fecha":"2026-07-23","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":110,"oit":"S480805","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Larco Herrera Víctor 608 Urb. San Andrés II","distrito":"Trujillo","provincia":"Trujillo","departamento":"La Libertad","lat":-8.1202,"lng":-79.0352,"fecha":"2026-07-24","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":111,"oit":"S480810","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Mz. C Lt. 57 Urb. Las Flores del Golf II","distrito":"Víctor Larco Herrera","provincia":"Trujillo","departamento":"La Libertad","lat":-8.13667,"lng":-79.03726,"fecha":"2026-07-24","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":112,"oit":"S480800","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. José G. Condorcanqui 1357 Mz. 9","distrito":"La Esperanza","provincia":"Trujillo","departamento":"La Libertad","lat":-8.08034,"lng":-79.04587,"fecha":"2026-07-24","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":113,"oit":"S480799","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Mz. Q Lt. 42 Parque Industrial TEPRO","distrito":"La Esperanza","provincia":"Trujillo","departamento":"La Libertad","lat":-8.07519,"lng":-79.05791,"fecha":"2026-07-24","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":114,"oit":"S480802","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Mz. 1 Lt. 2 Urb. El Milagro","distrito":"Huanchaco","provincia":"Trujillo","departamento":"La Libertad","lat":-8.02201,"lng":-79.06541,"fecha":"2026-07-27","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":115,"oit":"S480809","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Mz. 30 Lt. 13 A.H. Wichanzao","distrito":"La Esperanza","provincia":"Trujillo","departamento":"La Libertad","lat":-8.0559599,"lng":-79.051675,"fecha":"2026-07-27","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":116,"oit":"S480801","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Calle 9 de Octubre 712 Mz. 15 Lt. 11","distrito":"Florencia de Mora","provincia":"Trujillo","departamento":"La Libertad","lat":-8.079352836,"lng":-79.02167593,"fecha":"2026-07-27","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":117,"oit":"S480815","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Grau Mz. A8 Lt. 27","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.178027492,"lng":-80.68349608,"fecha":"2026-07-28","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":118,"oit":"S480804","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. San Martín 625 Mz. N2 Lt. 12","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.185044358,"lng":-80.67190336,"fecha":"2026-07-28","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":119,"oit":"S480806","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Chulucanas 243 Mz. J1 Lt. 8","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.185184686,"lng":-80.66486924,"fecha":"2026-07-28","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":120,"oit":"S480813","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. Grau 2343 Mz. A2 Lt. 28","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.187253414,"lng":-80.65141737,"fecha":"2026-07-28","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":121,"oit":"S480827","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Guillermo Gulman 836 Mz. B Lt. 16","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.195825574,"lng":-80.64109209,"fecha":"2026-07-29","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":122,"oit":"S480807","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Av. Gulman Mz. 1 Lt. 10 A.H. San Pedro","distrito":"Piura","provincia":"Piura","departamento":"Piura","lat":-5.20038341,"lng":-80.64395477,"fecha":"2026-07-29","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":123,"oit":"S480819","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. Progreso 1304 Mz. A Lt. 2","distrito":"Castilla","provincia":"Piura","departamento":"Piura","lat":-5.21184376,"lng":-80.62234783,"fecha":"2026-07-29","horario":"08:30 - 12:30","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":124,"oit":"S480814","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"ALTA","direccion":"Av. Guardia Civil Mz. M Lt. 6","distrito":"Castilla","provincia":"Piura","departamento":"Piura","lat":-5.187253414,"lng":-80.59301962,"fecha":"2026-07-29","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"},{"n":125,"oit":"S480816","sfa":"551870","cliente":"COMPAÑIA HARD DISCOUNT S.A.C.","tipo_oit":"MODIF","direccion":"Jr. Apurímac 648 Sector III","distrito":"Chulucanas","provincia":"Morropón","departamento":"Piura","lat":-5.095192742,"lng":-80.1607523,"fecha":"2026-07-29","horario":"13:00 - 17:00","bw":"10 Mbps","cambio_cpe":"FG-70G","tecnico":"","estado":"PENDIENTE"}];
+
+let DATA = DATA_RAW.map(d=>({...d,entregables:{acta:false,guia:false,informe:false}}));
+let TECNICOS = [];
+let mapInstance = null, mapMarkers = [];
+let chartSemana = null, chartEstado = null;
+let firstLoadDone = false;
+const DEPT_COLORS = {Lima:'#2563eb',Piura:'#059669','La Libertad':'#f97316',Arequipa:'#06b6d4',Ica:'#ec4899'};
+const COLORS = ['#00d4ff','#a855f7','#3b82f6','#22c55e','#f97316','#ec4899','#eab308','#ef4444'];
+
+function showSparkToast(d) {
+  const cont = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'spark-toast';
+  el.innerHTML = `<span class="spark-emoji">🎉</span> <b>${d.oit}</b> completada${d.tecnico ? ' por <b>'+d.tecnico.split(' ')[0]+'</b>' : ''}`;
+  cont.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+
+  // Pulso extra de celebración en el anillo de progreso del header
+  const ringWrap = document.querySelector('.progress-ring-wrap');
+  if (ringWrap) {
+    ringWrap.classList.add('ring-celebrate');
+    setTimeout(() => ringWrap.classList.remove('ring-celebrate'), 1200);
+  }
+}
+
+// ============================================================
+// ============================================================
+// FONDO DE PARTÍCULAS (constelación animada)
+// ============================================================
+(function initParticles() {
+  const canvas = document.getElementById('particleCanvas');
+  if (!canvas) { console.error('particleCanvas no encontrado en el DOM'); return; }
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  let w, h;
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const COUNT = Math.max(40, Math.min(110, Math.floor((w*h)/16000)));
+  for (let i=0; i<COUNT; i++) {
+    particles.push({
+      x: Math.random()*w,
+      y: Math.random()*h,
+      vx: (Math.random()-0.5)*0.5,
+      vy: (Math.random()-0.5)*0.5,
+      r: Math.random()*2+1
+    });
+  }
+  console.log(`✨ Partículas inicializadas: ${COUNT} (canvas ${w}x${h})`);
+
+  const LINK_DIST = 150;
+
+  function tick() {
+    ctx.clearRect(0,0,w,h);
+    for (let p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > w) p.vx *= -1;
+      if (p.y < 0 || p.y > h) p.vy *= -1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,212,255,0.9)';
+      ctx.fill();
+    }
+    for (let i=0; i<particles.length; i++) {
+      for (let j=i+1; j<particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < LINK_DIST) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(56,189,248,${0.35*(1-dist/LINK_DIST)})`;
+          ctx.lineWidth = 0.6;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+
+// ============================================================
+// CONTADOR ANIMADO (count-up) PARA KPIs
+// ============================================================
+function animateCounter(el, from, to, duration=700, suffix='') {
+  if (from === to) { el.textContent = to + suffix; return; }
+  const start = performance.now();
+  function step(now) {
+    const prog = Math.min((now-start)/duration, 1);
+    const eased = 1 - Math.pow(1-prog, 3); // ease-out cubic
+    const val = Math.round(from + (to-from)*eased);
+    el.textContent = val + suffix;
+    if (prog < 1) requestAnimationFrame(step);
+    else el.textContent = to + suffix;
+  }
+  requestAnimationFrame(step);
+}
+const __prevKPI = {kTotal:0,kPend:0,kProc:0,kComp:0,kHoy:0};
+
+// ============================================================
+// ANILLO DE PROGRESO CIRCULAR (header)
+// ============================================================
+const RING_CIRC = 188.5; // 2 * PI * r(30)
+let __prevRingPct = 0;
+function updateProgressRing(comp, total) {
+  const pct = total ? Math.round(comp/total*100) : 0;
+  const fillEl = document.getElementById('ringFill');
+  const pctEl = document.getElementById('ringPct');
+  if (!fillEl || !pctEl) return;
+  const offset = RING_CIRC - (RING_CIRC * pct / 100);
+  fillEl.style.strokeDashoffset = offset;
+  animateCounter(pctEl, __prevRingPct, pct, 1200, '%');
+  __prevRingPct = pct;
+}
+
+// FRASES
+// ============================================================
+const FRASES = [
+  {icon:'🚀',text:'El éxito es la suma de pequeños esfuerzos repetidos día tras día.',author:'Robert Collier'},
+  {icon:'⚡',text:'La calidad nunca es un accidente; siempre es el resultado de un esfuerzo inteligente.',author:'John Ruskin'},
+  {icon:'🌟',text:'No cuentes los días, haz que los días cuenten.',author:'Muhammad Ali'},
+  {icon:'🎯',text:'Cada trabajo es un autorretrato de quien lo hizo. Autógrafa tu trabajo con excelencia.',author:'Anónimo'},
+  {icon:'💪',text:'El trabajo en equipo hace que el sueño funcione.',author:'John C. Maxwell'},
+  {icon:'🔥',text:'La disciplina es el puente entre las metas y los logros.',author:'Jim Rohn'},
+  {icon:'🌐',text:'Conectar personas, transformar experiencias. Cada OIT completada acerca a una familia al mundo.',author:'SPSA Field Team'},
+  {icon:'✨',text:'El compromiso es lo que transforma una promesa en realidad.',author:'Abraham Lincoln'},
+  {icon:'🏆',text:'Los campeones no son los que nunca fallan, sino los que nunca se rinden.',author:'Anónimo'},
+  {icon:'🛠',text:'Haz tu trabajo con tanta excelencia que los demás no puedan ignorarte.',author:'Martin Luther King Jr.'},
+  {icon:'📡',text:'Cada instalación que completamos hoy, conecta un sueño mañana.',author:'SPSA Field Team'},
+  {icon:'🌄',text:'El secreto de avanzar es comenzar. El secreto de comenzar es dividir las tareas complejas en pequeñas acciones manejables.',author:'Mark Twain'},
+];
+let fraseIdx = 0;
+const FRASE_INTERVAL = 30000;
+
+function initFrases() {
+  const dots = document.getElementById('fraseDots');
+  dots.innerHTML = FRASES.map((_,i) => `<div class="frase-dot${i===0?' act':''}" onclick="setFrase(${i})"></div>`).join('');
+  setFrase(Math.floor(Math.random() * FRASES.length));
+  setInterval(() => setFrase((fraseIdx+1) % FRASES.length), FRASE_INTERVAL);
+}
+
+function setFrase(idx) {
+  fraseIdx = idx;
+  const f = FRASES[idx];
+  const ti = document.getElementById('fraseIcon');
+  const tt = document.getElementById('fraseText');
+  const ta = document.getElementById('fraseAuthor');
+  ti.style.opacity = '0'; tt.style.opacity = '0'; ta.style.opacity = '0';
+  setTimeout(() => {
+    ti.textContent = f.icon;
+    tt.textContent = `"${f.text}"`;
+    ta.textContent = `— ${f.author}`;
+    ti.style.opacity = '1'; tt.style.opacity = '1'; ta.style.opacity = '1';
+  }, 300);
+  document.querySelectorAll('.frase-dot').forEach((d,i) => d.classList.toggle('act', i===idx));
+}
+
+// ============================================================
+// CLOCK
+// ============================================================
+function tickClock() {
+  const now = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Lima'}));
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  document.getElementById('dateLbl').textContent = `${dias[now.getDay()]} ${now.getDate()} ${meses[now.getMonth()]} ${now.getFullYear()} · Lima, Perú`;
+}
+setInterval(tickClock, 1000); tickClock();
+
+// ============================================================
+// WEATHER
+// ============================================================
+const DEPT_COORDS = {
+  Lima:{lat:-12.046,lng:-77.0428},
+  Piura:{lat:-5.195,lng:-80.632},
+  'La Libertad':{lat:-8.112,lng:-79.028},
+  Arequipa:{lat:-16.409,lng:-71.537},
+  Ica:{lat:-14.067,lng:-75.728}
+};
+const WEATHER_ICONS = {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',61:'🌧',63:'🌧',65:'⛈',71:'❄️',73:'❄️',80:'🌦',81:'🌧',82:'⛈',95:'⛈',99:'⛈'};
+const WEATHER_DESC = {0:'Despejado',1:'Casi despejado',2:'Parcialmente nublado',3:'Nublado',45:'Neblina',51:'Llovizna',61:'Lluvia',63:'Lluvia moderada',80:'Chubascos',95:'Tormenta'};
+let deptClimates = {};
+
+async function fetchDeptWeather(dept, lat, lng) {
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode&timezone=America/Lima`);
+    const j = await r.json();
+    const temp = Math.round(j.current.temperature_2m);
+    const code = j.current.weathercode;
+    deptClimates[dept] = {temp, icon: WEATHER_ICONS[code]||'🌡'};
+  } catch(e) { deptClimates[dept] = null; }
+}
+
+async function cargarClimas() {
+  // Lima main
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=-12.046&longitude=-77.0428&current=temperature_2m,weathercode,windspeed_10m&timezone=America/Lima');
+    const j = await r.json();
+    const temp = Math.round(j.current.temperature_2m);
+    const code = j.current.weathercode;
+    const wind = Math.round(j.current.windspeed_10m);
+    const icon = WEATHER_ICONS[code]||'🌡';
+    const desc = WEATHER_DESC[code]||'Variable';
+    document.getElementById('wIcon').textContent = icon;
+    document.getElementById('wTemp').textContent = `${temp}°C`;
+    document.getElementById('wDesc').textContent = `${desc} · Viento ${wind} km/h`;
+    deptClimates['Lima'] = {temp, icon};
+  } catch(e) {}
+  // Other depts in parallel
+  await Promise.all(Object.entries(DEPT_COORDS).filter(([d])=>d!=='Lima').map(([d,c]) => fetchDeptWeather(d, c.lat, c.lng)));
+  renderDeptList();
+}
+cargarClimas();
+setInterval(cargarClimas, 600000);
+
+// ============================================================
+// FIREBASE LISTENER (tiempo real)
+// ============================================================
+// ============================================================
+// AUTH → luego listeners de Firestore
+// ============================================================
+firebase.auth().onAuthStateChanged(user => {
+  if (user) {
+    startListeners();
+  } else {
+    // Intenta sesión anónima primero; si falla (no habilitada), igual intenta leer
+    firebase.auth().signInAnonymously().catch(() => {
+      // Si anonymous no está habilitado, intentar de todas formas
+      startListeners();
+    });
+  }
+});
+
+function startListeners() {
+  db.collection('trabajos').onSnapshot(snap => {
+    const ov = {};
+    snap.forEach(doc => { ov[doc.id] = doc.data(); });
+    const prevEstados = {};
+    DATA.forEach(d => { prevEstados[d.oit] = d.estado; });
+    DATA = DATA_RAW.map(d => ({
+      ...d,
+      estado: ov[d.oit]?.estado ?? d.estado,
+      tecnico: ov[d.oit]?.tecnico ?? (d.tecnico||''),
+      entregables: ov[d.oit]?.entregables ?? {acta:false,guia:false,informe:false}
+    }));
+    // Detectar nuevas OITs completadas para mostrar el toast de celebración
+    if (firstLoadDone) {
+      DATA.forEach(d => {
+        if (d.estado==='COMPLETADO' && prevEstados[d.oit] && prevEstados[d.oit]!=='COMPLETADO') {
+          showSparkToast(d);
+        }
+      });
+    }
+    firstLoadDone = true;
+    renderAll();
+  }, err => {
+    console.warn('Firestore error:', err.code);
+    // Si falla por permisos, intentar leer con get() directo
+    db.collection('trabajos').get().then(snap => {
+      const ov = {};
+      snap.forEach(doc => { ov[doc.id] = doc.data(); });
+      DATA = DATA_RAW.map(d => ({
+        ...d,
+        estado: ov[d.oit]?.estado ?? d.estado,
+        tecnico: ov[d.oit]?.tecnico ?? (d.tecnico||''),
+        entregables: ov[d.oit]?.entregables ?? {acta:false,guia:false,informe:false}
+      }));
+      renderAll();
+    }).catch(e => console.error('Error leyendo trabajos:', e));
+  });
+
+  db.collection('tecnicos').onSnapshot(snap => {
+    TECNICOS = [];
+    snap.forEach(doc => TECNICOS.push({id:doc.id,...doc.data()}));
+    renderTecnicos();
+  }, err => {
+    db.collection('tecnicos').get().then(snap => {
+      TECNICOS = [];
+      snap.forEach(doc => TECNICOS.push({id:doc.id,...doc.data()}));
+      renderTecnicos();
+    }).catch(e => console.error('Error leyendo técnicos:', e));
+  });
+}
+
+// ============================================================
+// RENDER ALL
+// ============================================================
+function renderAll() {
+  renderKPIs();
+  renderToday();
+  renderMap();
+  renderDonut();
+  renderChartSemana();
+  renderDeptList();
+  renderTecnicos();
+}
+
+// ============================================================
+// KPIs
+// ============================================================
+function peruHoy() {
+  const now = new Date();
+  const lima = new Date(now.toLocaleString('en-US', {timeZone:'America/Lima'}));
+  return `${lima.getFullYear()}-${String(lima.getMonth()+1).padStart(2,'0')}-${String(lima.getDate()).padStart(2,'0')}`;
+}
+
+function renderKPIs() {
+  const t = DATA.length;
+  const pend = DATA.filter(d=>d.estado==='PENDIENTE').length;
+  const proc = DATA.filter(d=>d.estado==='EN PROCESO').length;
+  const comp = DATA.filter(d=>d.estado==='COMPLETADO').length;
+  const hoy = peruHoy();
+  const hoyList = DATA.filter(d=>d.fecha===hoy);
+  const hoyComp = hoyList.filter(d=>d.estado==='COMPLETADO').length;
+
+  animateCounter(document.getElementById('kPend'), __prevKPI.kPend, pend);
+  animateCounter(document.getElementById('kProc'), __prevKPI.kProc, proc);
+  animateCounter(document.getElementById('kComp'), __prevKPI.kComp, comp);
+  animateCounter(document.getElementById('kHoy'), __prevKPI.kHoy, hoyList.length);
+  __prevKPI.kPend = pend; __prevKPI.kProc = proc; __prevKPI.kComp = comp; __prevKPI.kHoy = hoyList.length;
+
+  document.getElementById('kPendPct').textContent = `${Math.round(pend/t*100)}% del total`;
+  document.getElementById('kProcPct').textContent = `${Math.round(proc/t*100)}% del total`;
+  document.getElementById('kCompPct').textContent = `${Math.round(comp/t*100)}% completado`;
+  document.getElementById('kHoySub').textContent = hoyList.length ? `${hoyComp} completadas de ${hoyList.length}` : 'Sin OITs hoy';
+  document.getElementById('donutPct').textContent = `${Math.round(comp/t*100)}%`;
+  updateProgressRing(comp, t);
+}
+
+// ============================================================
+// TODAY TABLE
+// ============================================================
+function renderToday() {
+  const hoy = peruHoy();
+  const list = DATA.filter(d=>d.fecha===hoy).sort((a,b)=>a.horario.localeCompare(b.horario));
+  const tbody = document.getElementById('todayTbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><span class="empty-icon">📡</span>Sin OITs programadas para hoy</div></td></tr>';
+    return;
+  }
+  const cls = {PENDIENTE:'b-pend','EN PROCESO':'b-proc',COMPLETADO:'b-comp',VENCIDO:'b-venc'};
+  tbody.innerHTML = list.map((r,i) => `
+    <tr class="row-fadein" style="animation-delay:${i*0.05}s">
+      <td style="font-weight:700;color:#00d4ff;font-size:0.7rem">${r.oit}</td>
+      <td style="font-size:0.7rem">${r.distrito}</td>
+      <td style="white-space:nowrap;font-size:0.7rem">${r.horario}</td>
+      <td style="font-size:0.7rem">${r.tecnico ? `<span style="color:#c4b5fd">${r.tecnico.split(' ')[0]}</span>` : '<span style="color:#ef444488">Sin asignar</span>'}</td>
+      <td><span class="badge ${cls[r.estado]||''}">${r.estado}</span></td>
+    </tr>`).join('');
+}
+
+// ============================================================
+// MAP
+// ============================================================
+function renderMap() {
+  const hoy = peruHoy();
+  const hoyList = DATA.filter(d=>d.fecha===hoy);
+  if (!mapInstance) {
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    if (!window.L) {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = () => initMap(hoyList);
+      document.head.appendChild(s);
+      return;
+    }
+    initMap(hoyList);
+    return;
+  }
+  updateMapMarkers(hoyList);
+}
+
+function initMap(hoyList) {
+  mapInstance = L.map('map', {center:[-12.05,-77.0],zoom:11,zoomControl:true});
+  // Lighter map tile for better visibility
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© OpenStreetMap',maxZoom:19
+  }).addTo(mapInstance);
+  updateMapMarkers(hoyList);
+}
+
+function updateMapMarkers(hoyList) {
+  mapMarkers.forEach(m=>m.remove());
+  mapMarkers = [];
+  if (!window.L || !mapInstance) return;
+  const cols = {COMPLETADO:'#22c55e','EN PROCESO':'#f59e0b',PENDIENTE:'#ef4444',VENCIDO:'#7f1d1d'};
+  // Background OITs (otras fechas) — también animadas si están pendientes o en proceso
+  DATA.filter(d=>d.fecha!==peruHoy()).forEach(r => {
+    const animarFondo = (r.estado==='PENDIENTE' || r.estado==='EN PROCESO');
+    const colFondo = r.estado==='EN PROCESO' ? '#f59e0b' : '#94a3b8';
+    const pulseFondo = animarFondo
+      ? `<div style="position:absolute;top:50%;left:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border:1px solid ${colFondo};border-radius:50%;animation:pulseRingSmall 2.4s ease-out infinite;opacity:0.6"></div>`
+      : '';
+    const icon = L.divIcon({
+      html:`<div style="position:relative;width:20px;height:20px;overflow:visible">${pulseFondo}<div style="position:absolute;top:50%;left:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;background:${colFondo};border-radius:50%;opacity:0.5;border:1px solid ${colFondo}"></div></div>`,
+      className:'map-marker-no-clip',
+      iconSize:[20,20],
+      iconAnchor:[10,10]
+    });
+    mapMarkers.push(L.marker([r.lat,r.lng],{icon}).addTo(mapInstance));
+  });
+  // Today OITs
+  hoyList.forEach(r => {
+    const col = cols[r.estado]||'#64748b';
+    const animar = (r.estado==='PENDIENTE' || r.estado==='EN PROCESO');
+    // Contenedor grande (40x40) para que el anillo tenga espacio de expandirse sin recortarse,
+    // el punto real queda centrado dentro con position:absolute
+    const pulseRing = animar
+      ? `<div style="position:absolute;top:50%;left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid ${col};border-radius:50%;animation:pulseRing 1.8s ease-out infinite;opacity:0.8"></div>`
+      : '';
+    const icon = L.divIcon({
+      html:`<div style="position:relative;width:40px;height:40px;overflow:visible">${pulseRing}<div style="position:absolute;top:50%;left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;background:${col};border-radius:50%;border:2px solid white;box-shadow:0 0 10px ${col},0 0 20px ${col}88;z-index:2"></div></div>`,
+      className:'map-marker-no-clip',
+      iconSize:[40,40],
+      iconAnchor:[20,20]
+    });
+    mapMarkers.push(
+      L.marker([r.lat,r.lng],{icon})
+        .bindPopup(`<b style="color:#1e3a8a">${r.oit}</b><br>${r.distrito}<br><b>${r.horario}</b><br>Técnico: <b>${r.tecnico||'Sin asignar'}</b><br>Estado: <b>${r.estado}</b>`)
+        .addTo(mapInstance)
+    );
+  });
+  if (hoyList.length > 0) {
+    const bounds = hoyList.map(r=>[r.lat,r.lng]);
+    mapInstance.fitBounds(bounds, {padding:[30,30]});
+  }
+}
+
+// ============================================================
+// DONUT
+// ============================================================
+function renderDonut() {
+  const comp = DATA.filter(d=>d.estado==='COMPLETADO').length;
+  const proc = DATA.filter(d=>d.estado==='EN PROCESO').length;
+  const pend = DATA.filter(d=>d.estado==='PENDIENTE').length;
+  const venc = DATA.filter(d=>d.estado==='VENCIDO').length;
+  const vals = [comp, proc, pend, venc];
+  const lbls = ['Completado','En Proceso','Pendiente','Vencido'];
+  const clrs = ['#059669','#d97706','#2563eb','#dc2626'];
+
+  if (chartEstado) chartEstado.destroy();
+  chartEstado = new Chart(document.getElementById('chartEstado'), {
+    type:'doughnut',
+    data:{labels:lbls, datasets:[{data:vals, backgroundColor:clrs, borderWidth:3, borderColor:'#060d1a', hoverBorderColor:'#fff', hoverBorderWidth:2}]},
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed/DATA.length*100)}%)`}}},
+      cutout:'70%',
+      animation:{animateRotate:true, duration:1000}
+    }
+  });
+
+  document.getElementById('donutLegend').innerHTML = lbls.map((l,i) => `
+    <div class="dl-item">
+      <div class="dl-dot" style="background:${clrs[i]}"></div>
+      <span style="color:#94a3b8">${l}</span>
+      <span class="dl-num" style="color:${clrs[i]}">${vals[i]}</span>
+    </div>`).join('');
+}
+
+// ============================================================
+// CHART SEMANA
+// ============================================================
+function renderChartSemana() {
+  const semanas = {};
+  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  DATA.forEach(d => {
+    const [y,m,dd] = d.fecha.split('-').map(Number);
+    const sn = Math.ceil(dd/7);
+    const key = `${MESES[m-1]} S${sn}`;
+    semanas[key] = (semanas[key]||0)+1;
+  });
+  const keys = Object.keys(semanas);
+  const vals = keys.map(k=>semanas[k]);
+  if (chartSemana) chartSemana.destroy();
+  chartSemana = new Chart(document.getElementById('chartSemana'), {
+    type:'line',
+    data:{
+      labels:keys,
+      datasets:[{
+        label:'OITs',
+        data:vals,
+        borderColor:'#00d4ff',
+        backgroundColor:'rgba(0,212,255,0.08)',
+        fill:true, tension:0.4,
+        pointBackgroundColor:'#00d4ff',
+        pointRadius:3, pointHoverRadius:6,
+        borderWidth:2
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        y:{beginAtZero:true, grid:{color:'#0f3460'}, ticks:{color:'#475569', font:{size:10}}},
+        x:{grid:{display:false}, ticks:{color:'#475569', font:{size:9}, maxTicksLimit:8}}
+      }
+    }
+  });
+}
+
+// ============================================================
+// DEPT LIST (con clima)
+// ============================================================
+function renderDeptList() {
+  const depts = {};
+  DATA.forEach(d => {
+    if (!depts[d.departamento]) depts[d.departamento] = {total:0, comp:0};
+    depts[d.departamento].total++;
+    if (d.estado==='COMPLETADO') depts[d.departamento].comp++;
+  });
+  const max = Math.max(...Object.values(depts).map(v=>v.total));
+  const sorted = Object.entries(depts).sort((a,b)=>b[1].total-a[1].total);
+  document.getElementById('deptList').innerHTML = sorted.map(([dept, v]) => {
+    const col = DEPT_COLORS[dept]||'#64748b';
+    const pct = Math.round(v.total/max*100);
+    const compPct = v.total ? Math.round(v.comp/v.total*100) : 0;
+    const clim = deptClimates[dept];
+    const climHtml = clim ? `<span style="font-size:0.68rem;color:#64748b;white-space:nowrap">${clim.icon} ${clim.temp}°</span>` : '';
+    return `<div class="dept-item">
+      <span class="dept-name" style="color:${col}">${dept}</span>
+      <div class="dept-bar-wrap"><div class="dept-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <span class="dept-count" style="color:${col}">${v.total}</span>
+      <span class="dept-pct">${compPct}%✓</span>
+      ${climHtml}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// TÉCNICOS
+// ============================================================
+const __prevTecComp = {};
+
+function renderTecnicos() {
+  const tecMap = {};
+  DATA.forEach(d => {
+    if (!d.tecnico) return;
+    if (!tecMap[d.tecnico]) tecMap[d.tecnico] = {total:0,comp:0,proc:0,pend:0};
+    tecMap[d.tecnico].total++;
+    if (d.estado==='COMPLETADO') tecMap[d.tecnico].comp++;
+    else if (d.estado==='EN PROCESO') tecMap[d.tecnico].proc++;
+    else tecMap[d.tecnico].pend++;
+  });
+  const sorted = Object.entries(tecMap).sort((a,b)=>b[1].comp-a[1].comp);
+  const cont = document.getElementById('techGrid');
+  if (!sorted.length) {
+    cont.innerHTML = '<div class="empty-state"><span class="empty-icon">👤</span><span>No hay técnicos con trabajos asignados todavía</span></div>';
+    return;
+  }
+  cont.innerHTML = sorted.map(([nombre, v], i) => {
+    const pct = v.total ? Math.round(v.comp/v.total*100) : 0;
+    const col = COLORS[i % COLORS.length];
+    const initials = nombre.split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
+    const justCompleted = __prevTecComp[nombre] !== undefined && v.comp > __prevTecComp[nombre];
+    __prevTecComp[nombre] = v.comp;
+    return `<div class="tcard${justCompleted?' flash':''}" style="border-color:${col}22">
+      <div class="tcard-avatar" style="background:${col}22;color:${col};border-color:${col}44">${initials}</div>
+      <div class="tcard-body">
+        <div class="tcard-name" style="color:#e0e6ef">${nombre}</div>
+        <div class="tcard-stats">✅ ${v.comp} comp. &nbsp; 🔄 ${v.proc} proc. &nbsp; ⏳ ${v.pend} pend. &nbsp; 📋 ${v.total} total</div>
+        <div class="tcard-bar"><div class="tcard-fill" style="width:${pct}%;background:linear-gradient(90deg,${col},${col}88)"></div></div>
+      </div>
+      <div class="tcard-pct" style="color:${col}">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+initFrases();
+renderAll();
+</script>
+<div id="toastContainer" style="position:fixed;top:100px;right:16px;z-index:900;display:flex;flex-direction:column;gap:8px;pointer-events:none"></div>
+
+</body>
+</html>
