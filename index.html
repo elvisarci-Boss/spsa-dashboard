@@ -555,6 +555,10 @@
     <h2 id="modal-title">Detalle del Trabajo</h2>
     <div class="info-grid" id="modal-info"></div>
     <div style="margin-top:12px;">
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📅 Fecha de Migración</label>
+      <input type="date" id="modal-fecha" style="background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:7px 10px; border-radius:6px; font-size:0.83rem; width:100%;">
+    </div>
+    <div style="margin-top:12px;">
       <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">👤 Técnico asignado</label>
       <select id="modal-tecnico" style="background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:7px 10px; border-radius:6px; font-size:0.83rem; width:100%;"></select>
     </div>
@@ -593,8 +597,10 @@
       </div>
     </div>
     <div style="margin-top:16px;">
-      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📝 Comentarios / Notas</label>
-      <textarea id="modal-notas" style="width:100%; background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:8px; border-radius:6px; font-size:0.83rem; height:80px; resize:vertical;"></textarea>
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📝 Agregar nuevo comentario/nota</label>
+      <textarea id="modal-notas-nueva" placeholder="Escribe aquí un comentario nuevo (se agregará arriba del historial, con fecha automática)..." style="width:100%; background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:8px; border-radius:6px; font-size:0.83rem; height:60px; resize:vertical;"></textarea>
+      <label style="font-size:0.75rem; color:#94a3b8; display:block; margin:10px 0 6px;">📜 Historial de comentarios / notas</label>
+      <textarea id="modal-notas" readonly style="width:100%; background:#0a1119; border:1px solid #1e3a5f; color:#94a3b8; padding:8px; border-radius:6px; font-size:0.8rem; height:110px; resize:vertical; white-space:pre-wrap;"></textarea>
     </div>
     <div style="margin-top:12px;">
       <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📊 Estado</label>
@@ -1280,11 +1286,13 @@ function loadLocal() {
   const savedGuiaInst = JSON.parse(localStorage.getItem('spsa_guia_inst')||'{}');
   const savedGuiaDesinst = JSON.parse(localStorage.getItem('spsa_guia_desinst')||'{}');
   TECNICOS = JSON.parse(localStorage.getItem('spsa_tecnicos')||'null') || JSON.parse(JSON.stringify(TECNICOS_INICIAL));
+  const savedFechas = JSON.parse(localStorage.getItem('spsa_fechas')||'{}');
   DATA = DATA_RAW.map(d => ({
     ...d,
     estado: savedEstados[d.oit]||d.estado,
     tecnico: savedTecAsig[d.oit]!==undefined ? savedTecAsig[d.oit] : d.tecnico,
     nota: savedNotas[d.oit]||'',
+    fecha: savedFechas[d.oit] || d.fecha,
     entregables: savedEntreg[d.oit]||{acta:false,guia:false,informe:false},
     guiaInst: savedGuiaInst[d.oit]||{numero:'',serie:''},
     guiaDesinst: savedGuiaDesinst[d.oit]||{numero:'',serie:''}
@@ -1351,6 +1359,7 @@ function initData() {
       estado: overrides[d.oit]?.estado ?? d.estado,
       tecnico: overrides[d.oit]?.tecnico ?? (d.tecnico||''),
       nota: overrides[d.oit]?.nota ?? '',
+      fecha: overrides[d.oit]?.fecha ?? d.fecha,
       entregables: overrides[d.oit]?.entregables ?? {acta:false,guia:false,informe:false},
       guiaInst: overrides[d.oit]?.guiaInst ?? {numero:'',serie:''},
       guiaDesinst: overrides[d.oit]?.guiaDesinst ?? {numero:'',serie:''}
@@ -1787,11 +1796,13 @@ function abrirDetalle(oit) {
   document.getElementById('modal-info').innerHTML = [
     ['OIT',r.oit],['SFA',r.sfa],['Cliente',r.cliente],['Tipo OIT',r.tipo_oit],
     ['Dirección',r.direccion],['Distrito',r.distrito],['Departamento',r.departamento],
-    ['Fecha Migración',r.fecha],['Horario',r.horario],['BW',r.bw],['Cambio CPE',r.cambio_cpe],
+    ['Horario',r.horario],['BW',r.bw],['Cambio CPE',r.cambio_cpe],
     ['Días para migrar', diasHasta(r.fecha)===0?'HOY':diasHasta(r.fecha)+'d']
   ].map(([l,v])=>`<div class="info-item"><div class="lbl">${l}</div><div class="val">${v||'-'}</div></div>`).join('');
+  document.getElementById('modal-fecha').value = r.fecha || '';
   document.getElementById('modal-tecnico').innerHTML = tecnicoOptions(r.tecnico);
   document.getElementById('modal-notas').value = r.nota||'';
+  document.getElementById('modal-notas-nueva').value = '';
   document.getElementById('modal-estado').value = r.estado;
   // Render entregables in modal
   const _e = r.entregables || {acta:false,guia:false,informe:false};
@@ -1817,15 +1828,40 @@ function guardarDetalle() {
   if (!editando) return;
   const estado = document.getElementById('modal-estado').value;
   const tecnico = document.getElementById('modal-tecnico').value;
-  let nota = document.getElementById('modal-notas').value;
+  const nuevaNotaTexto = document.getElementById('modal-notas-nueva') ? document.getElementById('modal-notas-nueva').value.trim() : '';
+  const nuevaFecha = document.getElementById('modal-fecha').value;
   const idx = DATA.findIndex(d=>d.oit===editando);
   const prevTec = DATA[idx].tecnico;
-  const notaPrevia = DATA[idx].nota || '';
-  // Si el comentario cambió respecto al guardado anterior, se antepone la fecha de hoy entre paréntesis
-  if (nota.trim() && nota.trim() !== notaPrevia.trim()) {
-    const hoyStr = peruFechaHoraStr();
-    nota = `(${hoyStr}) ${nota.trim()}`;
+  const fechaPrevia = DATA[idx].fecha || '';
+  const historialPrevio = DATA[idx].nota || '';
+
+  let entradasNuevas = [];
+
+  // 1) Si la fecha cambió, pedir motivo obligatorio y agregarlo como comentario fechado
+  if (nuevaFecha && nuevaFecha !== fechaPrevia) {
+    const motivo = prompt(`Vas a cambiar la Fecha de Migración de ${fechaPrevia || '(sin fecha)'} a ${nuevaFecha}.\n\nPor favor indica el motivo del cambio:`);
+    if (motivo === null) {
+      // Canceló el motivo: revertir el campo de fecha visualmente y no continuar con el cambio de fecha
+      document.getElementById('modal-fecha').value = fechaPrevia;
+    } else if (motivo.trim()) {
+      entradasNuevas.push(`(${peruFechaHoraStr()}) Cambio de fecha: ${fechaPrevia || 'sin fecha'} → ${nuevaFecha}. Motivo: ${motivo.trim()}`);
+      DATA[idx].fecha = nuevaFecha;
+    } else {
+      alert('Debes indicar un motivo para cambiar la fecha. La fecha no se modificó.');
+      document.getElementById('modal-fecha').value = fechaPrevia;
+    }
   }
+
+  // 2) Si se escribió un comentario manual nuevo, agregarlo también fechado
+  if (nuevaNotaTexto) {
+    entradasNuevas.push(`(${peruFechaHoraStr()}) ${nuevaNotaTexto}`);
+  }
+
+  // 3) El historial se arma con lo nuevo arriba (orden descendente) y lo previo debajo
+  const nota = entradasNuevas.length
+    ? entradasNuevas.join('\n') + (historialPrevio ? '\n' + historialPrevio : '')
+    : historialPrevio;
+
   DATA[idx].estado = estado;
   DATA[idx].tecnico = tecnico;
   DATA[idx].nota = nota;
@@ -1847,7 +1883,10 @@ function guardarDetalle() {
   const savedGD = JSON.parse(localStorage.getItem('spsa_guia_desinst')||'{}');
   savedGD[editando] = {numero: gdNum, serie: gdSer};
   localStorage.setItem('spsa_guia_desinst', JSON.stringify(savedGD));
-  persistTrabajo(editando, {estado, tecnico, nota, guiaInst: {numero: giNum, serie: giSer}, guiaDesinst: {numero: gdNum, serie: gdSer}, entregables: DATA[idxG].entregables});
+  const savedFechas2 = JSON.parse(localStorage.getItem('spsa_fechas')||'{}');
+  savedFechas2[editando] = DATA[idx].fecha;
+  localStorage.setItem('spsa_fechas', JSON.stringify(savedFechas2));
+  persistTrabajo(editando, {estado, tecnico, nota, fecha: DATA[idx].fecha, guiaInst: {numero: giNum, serie: giSer}, guiaDesinst: {numero: gdNum, serie: gdSer}, entregables: DATA[idxG].entregables});
   cerrarModal('modalDetalle');
   if (!firebaseOK) { filtrar(); renderTecnicos(); }
   if (tecnico && tecnico !== prevTec) {
