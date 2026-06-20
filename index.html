@@ -13,6 +13,13 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1923; color: #e0e6ef; min-height: 100vh; }
+
+  /* ENCABEZADO FIJO (sticky) — header, filtros, stats y pestañas quedan visibles al hacer scroll */
+  .sticky-top-wrap { position: sticky; top: 0; z-index: 50; background: #0f1923; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
+
+  /* La tabla principal scrollea internamente con su propia altura, así el encabezado fijo no empuja todo el documento */
+  #tablaWrapMain { max-height: calc(100vh - 300px); overflow-y: auto; }
+  #tablaWrapMain thead th { position: sticky; top: 0; z-index: 10; background: #161f2e; box-shadow: 0 2px 0 #1e3a5f; }
   
   header { background: linear-gradient(135deg, #1a2744 0%, #0d3b6e 100%); padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #2563eb; flex-wrap: wrap; }
   header h1 { font-size: 1.25rem; font-weight: 700; color: #fff; }
@@ -254,6 +261,7 @@
 </div>
 
 <div id="appContainer" style="display:none;">
+<div class="sticky-top-wrap">
 <header>
   <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#2563eb"/><path d="M8 18h20M18 8v20" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="18" cy="18" r="5" stroke="#fff" stroke-width="2"/></svg>
   <div>
@@ -306,6 +314,7 @@
   <div class="tab" onclick="setTab('programaciones',this)">📅 Programaciones</div>
   <div class="tab" id="tabUsuariosBtn" onclick="setTab('usuarios',this)" style="display:none;">👥 Usuarios</div>
 </div>
+</div><!-- /sticky-top-wrap -->
 
 <div class="content">
   <!-- TABLA -->
