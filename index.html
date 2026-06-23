@@ -1764,6 +1764,14 @@ function filtrar() {
     }
     return true;
   });
+
+  // Ordenar siempre por Fecha de Migración ascendente (la más próxima primero)
+  filtrados.sort((a, b) => {
+    const fa = a.fecha || '9999-99-99';
+    const fb = b.fecha || '9999-99-99';
+    return fa.localeCompare(fb);
+  });
+
   renderTabla(filtrados);
   renderStats(filtrados);
   document.getElementById('contadorFiltro').textContent = `${filtrados.length} de ${DATA.length} registros`;
