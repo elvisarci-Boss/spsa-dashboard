@@ -11,14 +11,19 @@
 <!-- EmailJS SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
-  // Inicializar EmailJS inmediatamente después de que carga el SDK,
-  // usando la Public Key guardada en localStorage (si existe).
-  // Esto evita el error "Account not found" por init tardío.
+  // Inicializar EmailJS con retry para asegurar que el SDK ya cargó antes de llamar init.
   (function() {
     const pk = localStorage.getItem('ejs_pk');
-    if (pk) {
-      try { emailjs.init({publicKey: pk}); } catch(e) { console.warn('EmailJS init early:', e); }
+    if (!pk) return;
+    function tryInit(n) {
+      if (typeof emailjs !== 'undefined' && typeof emailjs.init === 'function') {
+        try { emailjs.init({publicKey: pk}); console.log('EmailJS listo ✅'); }
+        catch(e) { console.warn('EmailJS init error:', e); }
+      } else if (n > 0) {
+        setTimeout(() => tryInit(n - 1), 200);
+      }
     }
+    tryInit(15); // reintenta hasta 15 veces cada 200ms = 3 segundos máximo
   })();
 </script>
 <style>
@@ -2257,7 +2262,7 @@ async function enviarCorreo(oit) {
 
   try {
     emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); // reinicializar por si acaso antes de enviar
-    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams, {publicKey: EMAILJS_PUBLIC_KEY});
     return {ok:true, msg:`Correo enviado a ${t.email}`};
   } catch(e) {
     return {ok:false, msg:`Error EmailJS: ${e.text || e.message || JSON.stringify(e)}`};
@@ -2312,7 +2317,7 @@ async function notificarFelicitacion(oit) {
         maps_link:    `https://www.google.com/maps?q=${r.lat},${r.lng}`,
         tecnico:      t.nombre,
         message:      mensaje
-      });
+      }, {publicKey: EMAILJS_PUBLIC_KEY});
     } catch(e) { console.error('Error enviando correo de felicitación:', e); }
   }
 
