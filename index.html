@@ -17,7 +17,7 @@
   (function() {
     const pk = localStorage.getItem('ejs_pk');
     if (pk) {
-      try { emailjs.init(pk); } catch(e) { console.warn('EmailJS init early:', e); }
+      try { emailjs.init({publicKey: pk}); } catch(e) { console.warn('EmailJS init early:', e); }
     }
   })();
 </script>
@@ -2191,7 +2191,7 @@ function updateEmailJSStatus() {
     if (el) { el.textContent = txt; el.style.color = col; }
   });
   if (ok) {
-    try { emailjs.init(EMAILJS_PUBLIC_KEY); } catch(e) {}
+    try { emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); } catch(e) {}
   }
 }
 
@@ -2206,7 +2206,7 @@ function guardarEmailJS() {
   localStorage.setItem('ejs_sid', sid);
   localStorage.setItem('ejs_tid', tid);
   localStorage.setItem('ejs_pk', pk);
-  emailjs.init(pk);
+  emailjs.init({publicKey: pk});
   updateEmailJSStatus();
   cerrarModal('modalEmailJS');
   alert('✅ EmailJS configurado correctamente. Los correos se enviarán automáticamente al asignar trabajos.');
@@ -2256,7 +2256,7 @@ async function enviarCorreo(oit) {
   };
 
   try {
-    emailjs.init(EMAILJS_PUBLIC_KEY); // reinicializar por si acaso antes de enviar
+    emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); // reinicializar por si acaso antes de enviar
     const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
     return {ok:true, msg:`Correo enviado a ${t.email}`};
   } catch(e) {
@@ -2290,7 +2290,7 @@ async function notificarFelicitacion(oit) {
   // Correo de felicitación (reutiliza la misma plantilla EmailJS, con texto de felicitación en los campos)
   if (t.email && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
     try {
-      emailjs.init(EMAILJS_PUBLIC_KEY); // reinicializar antes de enviar felicitación
+      emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); // reinicializar antes de enviar felicitación
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         to_email:     t.email,
         to_name:      t.nombre,
