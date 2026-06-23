@@ -8,8 +8,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<!-- EmailJS SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- EmailJS SDK v4 (versión específica para evitar problemas de caché) -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4.3.3/dist/email.min.js"></script>
 <script>
   // Inicializar EmailJS con retry para asegurar que el SDK ya cargó antes de llamar init.
   (function() {
@@ -2261,8 +2261,22 @@ async function enviarCorreo(oit) {
   };
 
   try {
-    emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); // reinicializar por si acaso antes de enviar
-    const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams, {publicKey: EMAILJS_PUBLIC_KEY});
+    // Llamada directa a la REST API de EmailJS (sin SDK) — más confiable desde GitHub Pages
+    const payload = {
+      service_id:      EMAILJS_SERVICE_ID,
+      template_id:     EMAILJS_TEMPLATE_ID,
+      user_id:         EMAILJS_PUBLIC_KEY,
+      template_params: templateParams
+    };
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return {ok:false, msg:`Error EmailJS: ${res.status} ${txt}`};
+    }
     return {ok:true, msg:`Correo enviado a ${t.email}`};
   } catch(e) {
     return {ok:false, msg:`Error EmailJS: ${e.text || e.message || JSON.stringify(e)}`};
@@ -2295,8 +2309,7 @@ async function notificarFelicitacion(oit) {
   // Correo de felicitación (reutiliza la misma plantilla EmailJS, con texto de felicitación en los campos)
   if (t.email && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
     try {
-      emailjs.init({publicKey: EMAILJS_PUBLIC_KEY}); // reinicializar antes de enviar felicitación
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      const felicParams = {
         to_email:     t.email,
         to_name:      t.nombre,
         from_name:    'SPSA Dashboard - elvis.arci@gmail.com',
@@ -2317,7 +2330,12 @@ async function notificarFelicitacion(oit) {
         maps_link:    `https://www.google.com/maps?q=${r.lat},${r.lng}`,
         tecnico:      t.nombre,
         message:      mensaje
-      }, {publicKey: EMAILJS_PUBLIC_KEY});
+      };
+      await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY, template_params: felicParams})
+      });
     } catch(e) { console.error('Error enviando correo de felicitación:', e); }
   }
 
