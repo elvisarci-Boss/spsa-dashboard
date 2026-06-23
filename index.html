@@ -10,6 +10,17 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <!-- EmailJS SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  // Inicializar EmailJS inmediatamente después de que carga el SDK,
+  // usando la Public Key guardada en localStorage (si existe).
+  // Esto evita el error "Account not found" por init tardío.
+  (function() {
+    const pk = localStorage.getItem('ejs_pk');
+    if (pk) {
+      try { emailjs.init(pk); } catch(e) { console.warn('EmailJS init early:', e); }
+    }
+  })();
+</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1923; color: #e0e6ef; min-height: 100vh; }
@@ -2237,6 +2248,7 @@ async function enviarCorreo(oit) {
   };
 
   try {
+    emailjs.init(EMAILJS_PUBLIC_KEY); // reinicializar por si acaso antes de enviar
     const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
     return {ok:true, msg:`Correo enviado a ${t.email}`};
   } catch(e) {
@@ -2270,6 +2282,7 @@ async function notificarFelicitacion(oit) {
   // Correo de felicitación (reutiliza la misma plantilla EmailJS, con texto de felicitación en los campos)
   if (t.email && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
     try {
+      emailjs.init(EMAILJS_PUBLIC_KEY); // reinicializar antes de enviar felicitación
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         to_email:     t.email,
         to_name:      t.nombre,
