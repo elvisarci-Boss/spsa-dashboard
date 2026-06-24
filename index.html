@@ -133,6 +133,15 @@
   .stat.vencido .stat-num { color: #f87171; text-shadow: 0 0 12px rgba(248,113,113,0.4); }
   @keyframes alertPulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
+  /* STANDBY — verde fosforescente pulsante */
+  .stat.standby { border-color: #39ff14; background: #0a1f08; }
+  .stat.standby .stat-bg {
+    background: radial-gradient(ellipse at 60% 50%, rgba(57,255,20,0.12) 0%, transparent 65%);
+    animation: alertPulse 2.5s ease-in-out infinite;
+  }
+  .stat.standby .stat-bg::after { content: '⏸'; position:absolute;bottom:6px;right:10px;font-size:2rem;opacity:0.15; }
+  .stat.standby .stat-num { color: #39ff14; text-shadow: 0 0 12px rgba(57,255,20,0.5); }
+
   .stat-num { font-size: 1.8rem; font-weight: 800; }
   .stat-label { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; letter-spacing: 0.04em; }
 
@@ -420,7 +429,7 @@
             <th>N°</th><th>OIT</th><th>SFA</th><th>Cliente</th><th>Tipo OIT</th>
             <th>Dirección</th><th>Distrito</th><th>Dpto.</th>
             <th>Fecha Migr.</th><th>Horario</th><th>Días</th>
-            <th>Técnico</th><th>Estado</th><th>Entregables</th><th>Guía de Instalación</th><th>Guía de Desinstalación</th><th>Acciones</th>
+            <th class="col-tecnico">Técnico</th><th>Estado</th><th class="col-entregables">Entregables</th><th class="col-guia-inst">Guía de Instalación</th><th class="col-guia-desinst">Guía de Desinstalación</th><th class="col-acciones">Acciones</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -597,7 +606,7 @@
     </div>
     <div class="week-summary" id="week-summary"></div>
     <div class="week-grid" id="week-grid"></div>
-    <div style="margin-top:20px;">
+    <div id="prog-detalle-semana" style="margin-top:20px;">
       <h3 style="font-size:0.9rem; color:#93c5fd; margin-bottom:12px;">📋 Detalle de la semana</h3>
       <div class="table-wrap">
         <table>
@@ -624,6 +633,7 @@
           <option value="admin">Administrador</option>
           <option value="supervisor" selected>Supervisor</option>
           <option value="lectura">Solo lectura</option>
+          <option value="monitor">Trabajos SPSA (solo visualización restringida)</option>
         </select>
       </div>
       <button class="btn btn-green" onclick="crearUsuario()" style="height:36px;">+ Crear Usuario</button>
@@ -639,8 +649,7 @@
 </div>
 
 <!-- MODAL DETALLE -->
-<div class="modal-bg" id="modalDetalle">
-  <div class="modal">
+<div class="modal-bg" id="modalDetalle" onclick="if(event.target===this){cerrarModal('modalDetalle')}">  <div class="modal">
     <h2 id="modal-title">Detalle del Trabajo</h2>
     <div class="info-grid" id="modal-info"></div>
     <div style="margin-top:12px;">
@@ -1017,8 +1026,8 @@ let currentRole = null;   // 'admin' | 'supervisor' | 'lectura'
 let currentNombre = '';
 let USUARIOS = []; // lista de perfiles (uid, email, nombre, rol) desde Firestore
 
-const ROLE_LABELS = {admin:'Administrador', supervisor:'Supervisor', lectura:'Solo lectura'};
-const ROLE_CLASS  = {admin:'role-admin', supervisor:'role-supervisor', lectura:'role-lectura'};
+const ROLE_LABELS = {admin:'Administrador', supervisor:'Supervisor', lectura:'Solo lectura', monitor:'Trabajos SPSA'};
+const ROLE_CLASS  = {admin:'role-admin', supervisor:'role-supervisor', lectura:'role-lectura', monitor:'role-lectura'};
 
 function initAuth() {
   if (!firebaseOK) {
@@ -1139,7 +1148,8 @@ function cerrarSesion() {
 function esAdmin()       { return currentRole === 'admin'; }
 function esSupervisor()  { return currentRole === 'supervisor'; }
 function esLectura()     { return currentRole === 'lectura'; }
-function puedeEditarTrabajos()  { return esAdmin() || esSupervisor(); } // estado, técnico (supervisor limitado, ver toggleEstado/Tecnico)
+function esMonitor()     { return currentRole === 'monitor'; } // Trabajos SPSA — vista restringida
+function puedeEditarTrabajos()  { return esAdmin() || esSupervisor(); }
 function puedeEditarGuias()     { return esAdmin() || esSupervisor(); }
 function puedeEditarEntregables(){ return esAdmin() || esSupervisor(); }
 function puedeGestionarTecnicos(){ return esAdmin() || esSupervisor(); }
@@ -1147,9 +1157,11 @@ function puedeGestionarUsuarios(){ return esAdmin(); }
 function puedeVerAuditoria()    { return esAdmin(); }
 
 function aplicarPermisosUI() {
-  // Badge de usuario
+  const nombre = currentNombre;
+  const rolLabel = currentRole === 'monitor' ? 'Trabajos SPSA' : (ROLE_LABELS[currentRole] || currentRole);
+  const rolClass = currentRole === 'monitor' ? 'role-lectura' : (ROLE_CLASS[currentRole] || 'role-lectura');
   document.getElementById('userBadge').innerHTML =
-    `👤 ${currentNombre} <span class="role-pill ${ROLE_CLASS[currentRole]}">${ROLE_LABELS[currentRole]}</span>`;
+    `👤 ${nombre} <span class="role-pill ${rolClass}">${rolLabel}</span>`;
 
   // Tab Usuarios — solo admin
   document.getElementById('tabUsuariosBtn').style.display = puedeGestionarUsuarios() ? 'inline-block' : 'none';
@@ -1158,13 +1170,31 @@ function aplicarPermisosUI() {
   const auditSec = document.getElementById('audit-section');
   if (auditSec) auditSec.style.display = puedeVerAuditoria() ? 'block' : 'none';
 
-  // Solo lectura: ocultar pestaña Notificaciones también (sin acceso a historial igualmente, pero el resto sí puede ver)
+  // Pestañas ocultas para 'lectura' y 'monitor'
   const notifTab = document.querySelector('[onclick*="setTab(\'notif\'"]');
-  if (notifTab) notifTab.style.display = esLectura() ? 'none' : '';
+  if (notifTab) notifTab.style.display = (esLectura() || esMonitor()) ? 'none' : '';
+
+  const tecTab = document.querySelector('[onclick*="setTab(\'tecnicos\'"]');
+  if (tecTab) tecTab.style.display = esMonitor() ? 'none' : '';
 
   // Ocultar barra de agregar técnico si no tiene permiso
   const addTecBar = document.getElementById('addTecBar');
   if (addTecBar) addTecBar.style.display = puedeGestionarTecnicos() ? '' : 'none';
+
+  // Restricciones específicas del rol Monitor (Trabajos SPSA)
+  if (esMonitor()) {
+    // Ocultar columnas restringidas en la tabla
+    const colsOcultas = ['col-tecnico','col-entregables','col-guia-inst','col-guia-desinst','col-acciones'];
+    colsOcultas.forEach(id => {
+      document.querySelectorAll('.'+id).forEach(el => el.style.display='none');
+    });
+    // Ocultar "Detalles de la semana" en Programaciones
+    const detSem = document.getElementById('prog-detalle-semana');
+    if (detSem) detSem.style.display = 'none';
+    // Cambiar botón Exportar para respetar restricciones
+    const btnExp = document.querySelector('[onclick="exportarExcel()"]');
+    if (btnExp) { btnExp.textContent = '⬇ Exportar'; btnExp.setAttribute('onclick','exportarMonitor()'); }
+  }
 }
 
 // ---- Registro de auditoría ----
@@ -1239,6 +1269,7 @@ function renderUsuarios() {
           <option value="admin" ${u.rol==='admin'?'selected':''}>Administrador</option>
           <option value="supervisor" ${u.rol==='supervisor'?'selected':''}>Supervisor</option>
           <option value="lectura" ${u.rol==='lectura'?'selected':''}>Solo lectura</option>
+          <option value="monitor" ${u.rol==='monitor'?'selected':''}>Trabajos SPSA</option>
         </select>
       </div>
       <div style="margin-top:8px; display:flex; gap:6px;">
@@ -1347,10 +1378,12 @@ function peruFechaHoraStr() {
 
 function diasHasta(fechaStr) {
   if (!fechaStr) return 9999;
-  // Parsear manualmente para evitar problemas UTC: '2026-06-15' → local midnight
+  // Recalcular hoy en tiempo real (zona horaria Lima) para que días se actualice cuando cambia la fecha de la OIT
+  const nowLima = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Lima'}));
+  const todayFresh = new Date(nowLima.getFullYear(), nowLima.getMonth(), nowLima.getDate());
   const [y, m, d] = fechaStr.split('-').map(Number);
-  const f = new Date(y, m - 1, d); // Constructor local, sin UTC
-  return Math.round((f - TODAY) / 86400000);
+  const f = new Date(y, m - 1, d);
+  return Math.round((f - todayFresh) / 86400000);
 }
 
 function diasBadge(dias, estado) {
@@ -1627,6 +1660,14 @@ function guardarGuia(oit, tipo, campo, valor) {
 }
 
 function renderTabla(data) {
+  if (esMonitor()) {
+    // re-aplicar restricciones de columnas en cada render para el rol Trabajos SPSA
+    setTimeout(() => {
+      ['col-tecnico','col-entregables','col-guia-inst','col-guia-desinst','col-acciones'].forEach(cls => {
+        document.querySelectorAll('.'+cls).forEach(el => el.style.display='none');
+      });
+    }, 0);
+  }
   const tbody = document.getElementById('tbody');
   if (!data.length) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No se encontraron registros</td></tr>'; return; }
   tbody.innerHTML = data.map(r => {
@@ -1645,7 +1686,7 @@ function renderTabla(data) {
       <td>${r.fecha ? r.fecha.slice(5).replace('-','/') + '/' + r.fecha.slice(0,4) : '-'}</td>
       <td><small>${r.horario||'-'}</small></td>
       <td>${diasBadge(dias, r.estado)}</td>
-      <td>
+      <td class="col-tecnico">
         <select class="tec-sel" onchange="cambiarTecnico('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede asignar técnicos"':''}>
           ${tecnicoOptions(r.tecnico)}
         </select>
@@ -1655,10 +1696,10 @@ function renderTabla(data) {
           ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
         </select>
       </td>
-      <td class="entregables-cell" data-oit="${r.oit}">${renderEntregables(r.oit, r.entregables)}</td>
-      <td class="guia-cell">${renderGuia(r.oit, 'guiaInst', r.guiaInst)}</td>
-      <td class="guia-cell">${renderGuia(r.oit, 'guiaDesinst', r.guiaDesinst)}</td>
-      <td>
+      <td class="col-entregables entregables-cell" data-oit="${r.oit}">${renderEntregables(r.oit, r.entregables)}</td>
+      <td class="col-guia-inst guia-cell">${renderGuia(r.oit, 'guiaInst', r.guiaInst)}</td>
+      <td class="col-guia-desinst guia-cell">${renderGuia(r.oit, 'guiaDesinst', r.guiaDesinst)}</td>
+      <td class="col-acciones">
         <button class="btn btn-gray" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirDetalle('${r.oit}')">👁</button>
         <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" class="btn btn-blue" style="padding:3px 8px; font-size:0.72rem; text-decoration:none;">📍</a>
         <button class="btn btn-purple" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirNotificar('${r.oit}')">📤</button>
@@ -1669,16 +1710,18 @@ function renderTabla(data) {
 
 function renderStats(data) {
   const total = data.length;
-  const pend = data.filter(d=>d.estado==='PENDIENTE').length;
-  const proc = data.filter(d=>d.estado==='EN PROCESO').length;
-  const comp = data.filter(d=>d.estado==='COMPLETADO').length;
-  const venc = data.filter(d=>d.estado==='VENCIDO'||(diasHasta(d.fecha)<0&&d.estado!=='COMPLETADO')).length;
+  const pend  = data.filter(d=>d.estado==='PENDIENTE').length;
+  const proc  = data.filter(d=>d.estado==='EN PROCESO').length;
+  const comp  = data.filter(d=>d.estado==='COMPLETADO').length;
+  const venc  = data.filter(d=>d.estado==='VENCIDO'||(diasHasta(d.fecha)<0&&d.estado!=='COMPLETADO'&&d.estado!=='STANDBY')).length;
+  const stby  = data.filter(d=>d.estado==='STANDBY').length;
   document.getElementById('statsBar').innerHTML = `
     <div class="stat total"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${total}</div><div class="stat-label">TOTAL SEDES</div></div></div>
     <div class="stat pendiente"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${pend}</div><div class="stat-label">PENDIENTES</div></div></div>
     <div class="stat proceso"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${proc}</div><div class="stat-label">EN PROCESO</div></div></div>
     <div class="stat completado"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${comp}</div><div class="stat-label">COMPLETADOS</div></div></div>
     <div class="stat vencido"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${venc}</div><div class="stat-label">VENCIDOS/URGENTES</div></div></div>
+    <div class="stat standby"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${stby}</div><div class="stat-label">STANDBY</div></div></div>
   `;
 }
 
@@ -2018,6 +2061,22 @@ function setTab(tab, el) {
   if (tab==='usuarios') { cargarUsuarios(); renderUsuarios(); }
 }
 
+function exportarMonitor() {
+  // Exportación restringida para rol Monitor (Trabajos SPSA): sin técnico, entregables, guías
+  if (typeof XLSX === 'undefined') { alert('Cargando librería...'); return; }
+  const fechaArch = new Date().toLocaleDateString('es-PE',{timeZone:'America/Lima'}).replace(/\//g,'-');
+  const HEADERS = ['N°','OIT','SFA','Cliente','Tipo OIT','Dirección','Distrito','Departamento','Fecha Migración','Horario','BW','Cambio CPE','Estado'];
+  const filas = DATA.map(r => [r.n, r.oit, r.sfa, r.cliente, r.tipo_oit, r.direccion, r.distrito, r.departamento, r.fecha, r.horario, r.bw, r.cambio_cpe, r.estado]);
+  const resumen = [['Estado','Cantidad'],...['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>[e,DATA.filter(d=>d.estado===e).length]),['',''],['TOTAL',DATA.length]];
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS,...filas]);
+  ws['!cols'] = [{wch:4},{wch:12},{wch:8},{wch:28},{wch:8},{wch:38},{wch:18},{wch:14},{wch:14},{wch:14},{wch:10},{wch:12},{wch:12}];
+  const wsR = XLSX.utils.aoa_to_sheet(resumen);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Trabajos SPSA');
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+  XLSX.writeFile(wb, 'TrabajosSPSA_'+fechaArch+'.xlsx');
+}
+
 function exportarExcel() {
   if (typeof XLSX === 'undefined') { alert('Cargando la librería Excel, intenta de nuevo en 2 segundos...'); return; }
   const ahora = new Date().toLocaleString('es-PE', {timeZone:'America/Lima'});
@@ -2216,7 +2275,15 @@ function renderProgramaciones() {
       const tc   = tecColor(r.tecnico);
       const tecLabel = r.tecnico ? r.tecnico.split(' ')[0] : 'Sin asignar';
       const tecInicial = r.tecnico ? r.tecnico.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() : '?';
-      return `<div class="week-card" style="border-color:${col}" onclick="abrirDetalle('${r.oit}')">
+      const standbyBg = r.estado==='STANDBY'
+        ? `position:relative;overflow:hidden;`
+        : '';
+      const standbyOverlay = r.estado==='STANDBY'
+        ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:2.5rem;opacity:0.12;pointer-events:none;z-index:0;">?</div>`
+        : '';
+      return `<div class="week-card" style="border-color:${col};${standbyBg}${r.estado==='STANDBY'?'background:#0a1f08;':''}box-sizing:border-box;" onclick="abrirDetalle('${r.oit}')">
+        ${standbyOverlay}
+        <div style="position:relative;z-index:1;">
         <div class="wc-oit">${r.oit}</div>
         <div class="wc-dist" title="${r.distrito}">${r.distrito}</div>
         <div class="wc-tec" title="${r.tecnico||'Sin asignar'}" style="display:flex;align-items:center;gap:4px;">
