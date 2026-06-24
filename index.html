@@ -59,14 +59,80 @@
   .btn-purple:hover { background: #6d28d9; }
 
   .stats { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
-  .stat { background: #161f2e; border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 130px; border-left: 4px solid; }
-  .stat.total { border-color: #2563eb; }
-  .stat.pendiente { border-color: #d97706; }
-  .stat.proceso { border-color: #7c3aed; }
-  .stat.completado { border-color: #059669; }
-  .stat.vencido { border-color: #dc2626; }
+  .stat { border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 130px; border-left: 4px solid; position: relative; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; cursor: default; }
+  .stat:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .stat-bg { position: absolute; inset: 0; z-index: 0; }
+  .stat-content { position: relative; z-index: 1; }
+
+  /* TOTAL — circuito PCB azul */
+  .stat.total { border-color: #2563eb; background: #0d1f3c; }
+  .stat.total .stat-bg {
+    background-image:
+      linear-gradient(rgba(37,99,235,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37,99,235,0.06) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .stat.total .stat-bg::after {
+    content: '📡';
+    position: absolute; bottom: 6px; right: 10px; font-size: 2rem; opacity: 0.12;
+  }
+  .stat.total .stat-num { color: #60a5fa; text-shadow: 0 0 12px rgba(96,165,250,0.5); }
+
+  /* PENDIENTES — radar / señal naranja */
+  .stat.pendiente { border-color: #d97706; background: #1c1206; }
+  .stat.pendiente .stat-bg {
+    background:
+      radial-gradient(circle at 80% 50%, rgba(217,119,6,0.12) 0%, transparent 60%),
+      radial-gradient(circle at 80% 50%, rgba(217,119,6,0.07) 0%, transparent 80%);
+  }
+  .stat.pendiente .stat-bg::after {
+    content: '⏳';
+    position: absolute; bottom: 6px; right: 10px; font-size: 2rem; opacity: 0.15;
+  }
+  .stat.pendiente .stat-num { color: #fbbf24; text-shadow: 0 0 12px rgba(251,191,36,0.4); }
+
+  /* EN PROCESO — líneas de código / matrix púrpura */
+  .stat.proceso { border-color: #7c3aed; background: #130c28; }
+  .stat.proceso .stat-bg {
+    background-image:
+      repeating-linear-gradient(90deg, rgba(124,58,237,0.06) 0px, rgba(124,58,237,0.06) 1px, transparent 1px, transparent 20px),
+      repeating-linear-gradient(0deg, rgba(124,58,237,0.04) 0px, rgba(124,58,237,0.04) 1px, transparent 1px, transparent 24px);
+  }
+  .stat.proceso .stat-bg::after {
+    content: '🔄';
+    position: absolute; bottom: 6px; right: 10px; font-size: 2rem; opacity: 0.15;
+  }
+  .stat.proceso .stat-num { color: #c4b5fd; text-shadow: 0 0 12px rgba(196,181,253,0.4); }
+
+  /* COMPLETADOS — red de nodos verde */
+  .stat.completado { border-color: #059669; background: #062816; }
+  .stat.completado .stat-bg {
+    background:
+      radial-gradient(circle at 20% 80%, rgba(5,150,105,0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(5,150,105,0.1) 0%, transparent 50%);
+  }
+  .stat.completado .stat-bg::after {
+    content: '✅';
+    position: absolute; bottom: 6px; right: 10px; font-size: 2rem; opacity: 0.15;
+  }
+  .stat.completado .stat-num { color: #34d399; text-shadow: 0 0 12px rgba(52,211,153,0.4); }
+
+  /* VENCIDOS — alerta / señal roja pulsante */
+  .stat.vencido { border-color: #dc2626; background: #200a0a; }
+  .stat.vencido .stat-bg {
+    background:
+      radial-gradient(ellipse at 70% 50%, rgba(220,38,38,0.18) 0%, transparent 60%);
+    animation: alertPulse 2.5s ease-in-out infinite;
+  }
+  .stat.vencido .stat-bg::after {
+    content: '⚠️';
+    position: absolute; bottom: 6px; right: 10px; font-size: 2rem; opacity: 0.18;
+  }
+  .stat.vencido .stat-num { color: #f87171; text-shadow: 0 0 12px rgba(248,113,113,0.4); }
+  @keyframes alertPulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
   .stat-num { font-size: 1.8rem; font-weight: 800; }
-  .stat-label { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+  .stat-label { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; letter-spacing: 0.04em; }
 
   .tabs { display: flex; gap: 0; padding: 0 24px; background: #161f2e; border-bottom: 1px solid #1e3a5f; flex-wrap: wrap; }
   .tab { padding: 10px 20px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; transition: 0.2s; }
@@ -1601,11 +1667,11 @@ function renderStats(data) {
   const comp = data.filter(d=>d.estado==='COMPLETADO').length;
   const venc = data.filter(d=>d.estado==='VENCIDO'||(diasHasta(d.fecha)<0&&d.estado!=='COMPLETADO')).length;
   document.getElementById('statsBar').innerHTML = `
-    <div class="stat total"><div class="stat-num">${total}</div><div class="stat-label">TOTAL SEDES</div></div>
-    <div class="stat pendiente"><div class="stat-num">${pend}</div><div class="stat-label">PENDIENTES</div></div>
-    <div class="stat proceso"><div class="stat-num">${proc}</div><div class="stat-label">EN PROCESO</div></div>
-    <div class="stat completado"><div class="stat-num">${comp}</div><div class="stat-label">COMPLETADOS</div></div>
-    <div class="stat vencido"><div class="stat-num">${venc}</div><div class="stat-label">VENCIDOS/URGENTES</div></div>
+    <div class="stat total"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${total}</div><div class="stat-label">TOTAL SEDES</div></div></div>
+    <div class="stat pendiente"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${pend}</div><div class="stat-label">PENDIENTES</div></div></div>
+    <div class="stat proceso"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${proc}</div><div class="stat-label">EN PROCESO</div></div></div>
+    <div class="stat completado"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${comp}</div><div class="stat-label">COMPLETADOS</div></div></div>
+    <div class="stat vencido"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${venc}</div><div class="stat-label">VENCIDOS/URGENTES</div></div></div>
   `;
 }
 
