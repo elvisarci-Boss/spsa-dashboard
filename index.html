@@ -2268,11 +2268,13 @@ async function enviarCorreo(oit) {
       user_id:         EMAILJS_PUBLIC_KEY,
       template_params: templateParams
     };
+    console.log('📧 Enviando correo EmailJS...', {sid: EMAILJS_SERVICE_ID, tid: EMAILJS_TEMPLATE_ID, pk: EMAILJS_PUBLIC_KEY ? 'OK' : 'VACÍA', to: templateParams.to_email});
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method:  'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'origin': 'http://localhost'},
       body:    JSON.stringify(payload)
     });
+    console.log('📧 Respuesta EmailJS:', res.status, res.statusText);
     if (!res.ok) {
       const txt = await res.text();
       return {ok:false, msg:`Error EmailJS: ${res.status} ${txt}`};
