@@ -10,6 +10,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <!-- EmailJS SDK v4 (versión específica para evitar problemas de caché) -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4.3.3/dist/email.min.js"></script>
+<!-- SheetJS para exportar Excel .xlsx -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
   // Inicializar EmailJS con retry para asegurar que el SDK ya cargó antes de llamar init.
   (function() {
@@ -357,7 +359,7 @@
     <div id="syncStatus" style="font-size:0.75rem; margin-top:2px; font-weight:700;">⚪ Iniciando...</div>
   </div>
   <div style="margin-left:auto; display:flex; gap:8px; flex-wrap:wrap;">
-    <button class="btn btn-green" onclick="exportarCSV()">⬇ Exportar CSV</button>
+    <button class="btn btn-green" onclick="exportarExcel()">⬇ Exportar Excel</button>
     <button class="btn btn-blue" onclick="document.getElementById('modalAlerta').classList.add('open')">🔔 Alertas</button>
     <button class="btn btn-purple" onclick="document.getElementById('modalCompartir').classList.add('open')">🔗 Compartir</button>
     <a href="monitor.html" target="_blank" class="btn btn-blue" style="text-decoration:none;">📊 Monitor</a>
@@ -2016,13 +2018,63 @@ function setTab(tab, el) {
   if (tab==='usuarios') { cargarUsuarios(); renderUsuarios(); }
 }
 
-function exportarCSV() {
-  const cols = ['n','oit','sfa','cliente','tipo_oit','direccion','distrito','departamento','fecha','horario','bw','cambio_cpe','tecnico','estado','acta','guia_entregable','informe','guia_inst_numero','guia_inst_serie','guia_desinst_numero','guia_desinst_serie'];
-  const rows = filtrados.map(r=>({...r, acta:r.entregables?.acta?'SI':'NO', guia_entregable:r.entregables?.guia?'SI':'NO', informe:r.entregables?.informe?'SI':'NO', guia_inst_numero:r.guiaInst?.numero||'', guia_inst_serie:r.guiaInst?.serie||'', guia_desinst_numero:r.guiaDesinst?.numero||'', guia_desinst_serie:r.guiaDesinst?.serie||''}));
-  const csv = [cols.join(','), ...filtrados.map(r=>cols.map(c=>`"${(r[c]||'')+''}"`).join(','))].join('\n');
-  const a = document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='SPSA_cronograma_trabajos.csv'; a.click();
+function exportarExcel() {
+  if (typeof XLSX === 'undefined') { alert('Cargando la librería Excel, intenta de nuevo en 2 segundos...'); return; }
+  const ahora = new Date().toLocaleString('es-PE', {timeZone:'America/Lima'});
+  const fechaArch = new Date().toLocaleDateString('es-PE',{timeZone:'America/Lima'}).replace(/\//g,'-');
+
+  const HEADERS = [
+    'N°','OIT','SFA','Cliente','Tipo OIT','Dirección','Distrito','Departamento',
+    'Fecha Migración','Horario','BW','Cambio CPE',
+    'Técnico Asignado','Estado',
+    'Acta','Guía (entregable)','Informe','% Entregables',
+    'N° Guía Instalación','Serie Equipo Inst.',
+    'N° Guía Desinstalación','Serie Equipo Desinst.',
+    'Comentarios / Notas'
+  ];
+
+  const filas = DATA.map(r => {
+    const e = r.entregables || {};
+    const done = [e.acta,e.guia,e.informe].filter(Boolean).length;
+    return [
+      r.n, r.oit, r.sfa, r.cliente, r.tipo_oit,
+      r.direccion, r.distrito, r.departamento,
+      r.fecha, r.horario, r.bw, r.cambio_cpe,
+      r.tecnico||'Sin asignar', r.estado,
+      e.acta?'SI':'NO', e.guia?'SI':'NO', e.informe?'SI':'NO',
+      Math.round(done/3*100)+'%',
+      r.guiaInst?.numero||'', r.guiaInst?.serie||'',
+      r.guiaDesinst?.numero||'', r.guiaDesinst?.serie||'',
+      r.nota||''
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...filas]);
+  ws['!cols'] = [
+    {wch:4},{wch:12},{wch:8},{wch:32},{wch:8},{wch:40},{wch:20},{wch:14},
+    {wch:14},{wch:14},{wch:10},{wch:12},
+    {wch:22},{wch:12},
+    {wch:6},{wch:8},{wch:8},{wch:10},
+    {wch:18},{wch:18},{wch:18},{wch:18},{wch:40}
+  ];
+
+  // Hoja resumen
+  const resumen = [
+    ['RESUMEN POR ESTADO',''],
+    ['Estado','Cantidad'],
+    ...['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>[e, DATA.filter(d=>d.estado===e).length]),
+    ['',''],['TOTAL SEDES',DATA.length],['',''],['Exportado el',ahora]
+  ];
+  const wsResumen = XLSX.utils.aoa_to_sheet(resumen);
+  wsResumen['!cols'] = [{wch:20},{wch:12}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'OITs - Cronograma');
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen por Estado');
+  XLSX.writeFile(wb, 'SPSA_Cronograma_'+fechaArch+'.xlsx');
 }
+
+function exportarCSV() { exportarExcel(); }
 
 function generarResumenEmail() {
   const hoy = DATA.filter(d=>diasHasta(d.fecha)<=3&&diasHasta(d.fecha)>=0&&d.estado!=='COMPLETADO');
