@@ -2266,6 +2266,7 @@ async function enviarCorreo(oit) {
       service_id:      EMAILJS_SERVICE_ID,
       template_id:     EMAILJS_TEMPLATE_ID,
       user_id:         EMAILJS_PUBLIC_KEY,
+      accessToken:     '2NIug-DH-aXQ0GiuQgaoo',
       template_params: templateParams
     };
     console.log('📧 Enviando correo EmailJS...', {sid: EMAILJS_SERVICE_ID, tid: EMAILJS_TEMPLATE_ID, pk: EMAILJS_PUBLIC_KEY ? 'OK' : 'VACÍA', to: templateParams.to_email});
@@ -2336,7 +2337,7 @@ async function notificarFelicitacion(oit) {
       await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method:  'POST',
         headers: {'Content-Type': 'application/json'},
-        body:    JSON.stringify({service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY, template_params: felicParams})
+        body:    JSON.stringify({service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY, accessToken: '2NIug-DH-aXQ0GiuQgaoo', template_params: felicParams})
       });
     } catch(e) { console.error('Error enviando correo de felicitación:', e); }
   }
