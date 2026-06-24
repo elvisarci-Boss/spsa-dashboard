@@ -163,9 +163,14 @@
   .badge-proceso { background: #4c1d95; color: #c4b5fd; }
   .badge-completado { background: #064e3b; color: #6ee7b7; }
   .badge-vencido { background: #7f1d1d; color: #fca5a5; }
+  .badge-standby { background: #14290a; color: #39ff14; border: 1px solid #39ff1466; box-shadow: 0 0 8px #39ff1444; animation: standbyPulse 2s ease-in-out infinite; }
+  @keyframes standbyPulse { 0%,100%{box-shadow:0 0 6px #39ff1444} 50%{box-shadow:0 0 14px #39ff1488} }
   .badge-alta { background: #1e3a5f; color: #93c5fd; }
   .badge-modif { background: #1a2744; color: #a5b4fc; }
   .badge-sin { background: #1f2937; color: #6b7280; }
+  /* Fila STANDBY resaltada en verde fosforescente */
+  tr.row-standby { background: #0a1f08 !important; outline: 1px solid #39ff1433; }
+  tr.row-standby td { color: #d1ffd1 !important; }
 
   .dias-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 0.75rem; }
   .dias-hoy { background: #854d0e; color: #fef08a; }
@@ -369,7 +374,7 @@
   </select>
   <select id="filtEstado" onchange="filtrar()">
     <option value="">Todos los estados</option>
-    <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option>
+    <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option><option>STANDBY</option>
   </select>
   <select id="filtTecnico" onchange="filtrar()">
     <option value="">Todos los técnicos</option>
@@ -687,7 +692,7 @@
     <div style="margin-top:12px;">
       <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-bottom:6px;">📊 Estado</label>
       <select id="modal-estado" style="background:#0f1923; border:1px solid #1e3a5f; color:#e0e6ef; padding:7px 10px; border-radius:6px; font-size:0.83rem; width:100%;">
-        <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option>
+        <option>PENDIENTE</option><option>EN PROCESO</option><option>COMPLETADO</option><option>VENCIDO</option><option>STANDBY</option>
       </select>
     </div>
     <div class="modal-btns">
@@ -1496,7 +1501,7 @@ function deleteTecnicoDoc(id) {
 // ==================== RENDER ====================
 
 function estadoBadge(e) {
-  const m = {PENDIENTE:'badge-pendiente','EN PROCESO':'badge-proceso',COMPLETADO:'badge-completado',VENCIDO:'badge-vencido'};
+  const m = {PENDIENTE:'badge-pendiente','EN PROCESO':'badge-proceso',COMPLETADO:'badge-completado',VENCIDO:'badge-vencido',STANDBY:'badge-standby'};
   return `<span class="badge ${m[e]||'badge-pendiente'}">${e}</span>`;
 }
 
@@ -1624,7 +1629,7 @@ function renderTabla(data) {
   if (!data.length) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No se encontraron registros</td></tr>'; return; }
   tbody.innerHTML = data.map(r => {
     const dias = diasHasta(r.fecha);
-    const cls = dias === 0 ? 'row-hoy' : (dias < 0 && r.estado !== 'COMPLETADO') ? 'row-vence' : '';
+    const cls = r.estado === 'STANDBY' ? 'row-standby' : (dias === 0 ? 'row-hoy' : (dias < 0 && r.estado !== 'COMPLETADO') ? 'row-vence' : '');
     const cliente_short = r.sfa === '551870' ? 'HARD DISCOUNT' : 'SPSA';
     return `<tr class="${cls}">
       <td>${r.n}</td>
@@ -1645,7 +1650,7 @@ function renderTabla(data) {
       </td>
       <td>
         <select class="estado-sel" onchange="cambiarEstado('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede cambiar el estado"':''}>
-          ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
+          ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
         </select>
       </td>
       <td class="entregables-cell" data-oit="${r.oit}">${renderEntregables(r.oit, r.entregables)}</td>
@@ -1922,10 +1927,22 @@ function guardarDetalle() {
   const nuevaFecha = document.getElementById('modal-fecha').value;
   const idx = DATA.findIndex(d=>d.oit===editando);
   const prevTec = DATA[idx].tecnico;
+  const prevEstado = DATA[idx].estado || '';
   const fechaPrevia = DATA[idx].fecha || '';
   const historialPrevio = DATA[idx].nota || '';
 
   let entradasNuevas = [];
+
+  // 0) Si el estado cambia a STANDBY, pedir comentario obligatorio
+  if (estado === 'STANDBY' && prevEstado !== 'STANDBY') {
+    const motivoStandby = prompt(`Vas a poner la OIT ${editando} en STANDBY.\n\nIndica el motivo (obligatorio):`);
+    if (motivoStandby === null || !motivoStandby.trim()) {
+      alert('Debes indicar un motivo para poner la OIT en STANDBY. El estado no se modificó.');
+      document.getElementById('modal-estado').value = prevEstado;
+      return;
+    }
+    entradasNuevas.push(`(${peruFechaHoraStr()}) STANDBY: ${motivoStandby.trim()}`);
+  }
 
   // 1) Si la fecha cambió, pedir motivo obligatorio y agregarlo como comentario fechado
   if (nuevaFecha && nuevaFecha !== fechaPrevia) {
@@ -2067,13 +2084,14 @@ function estadoColor(estado, e) {
   if (estado==='COMPLETADO') return '#059669';
   if (estado==='VENCIDO') return '#dc2626';
   if (estado==='EN PROCESO') return '#d97706';
+  if (estado==='STANDBY') return '#39ff14';
   const pct = e ? Math.round([e.acta,e.guia,e.informe].filter(Boolean).length/3*100) : 0;
   if (pct>0) return '#7c3aed';
   return '#334155';
 }
 
 function estadoBadgeSmall(estado) {
-  const m = {PENDIENTE:'#78350f|#fcd34d','EN PROCESO':'#4c1d95|#c4b5fd',COMPLETADO:'#064e3b|#6ee7b7',VENCIDO:'#7f1d1d|#fca5a5'};
+  const m = {PENDIENTE:'#78350f|#fcd34d','EN PROCESO':'#4c1d95|#c4b5fd',COMPLETADO:'#064e3b|#6ee7b7',VENCIDO:'#7f1d1d|#fca5a5',STANDBY:'#14290a|#39ff14'};
   const [bg,col] = (m[estado]||'#1f2937|#94a3b8').split('|');
   return `<span style="background:${bg};color:${col};padding:1px 6px;border-radius:8px;font-size:0.65rem;font-weight:700;">${estado}</span>`;
 }
