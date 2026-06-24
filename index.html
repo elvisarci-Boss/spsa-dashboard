@@ -2255,60 +2255,38 @@ function limpiarEmailJS() {
 async function enviarCorreo(oit) {
   const r = DATA.find(d=>d.oit===oit);
   const t = TECNICOS.find(x=>x.nombre===r.tecnico);
-  if (!t || !t.email) return {ok:false, msg:'Sin email registrado'};
-  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) return {ok:false, msg:'EmailJS no configurado'};
+  if (!t || !t.email) return {ok:false, msg:'Sin email registrado para este técnico'};
+  if (!APPS_SCRIPT_URL) return {ok:false, msg:'Apps Script no configurado (ver Notificaciones → Guía)'};
 
-  const dias = diasHasta(r.fecha);
-  const diasTxt = dias===0?'HOY':(dias===1?'MAÑANA':(dias>0?`en ${dias} días`:`hace ${Math.abs(dias)} días (VENCIDO)`));
-  const cliente_txt = r.cliente.includes('HARD') ? 'COMPAÑIA HARD DISCOUNT S.A.C.' : 'SUPERMERCADOS PERUANOS S.P.S.A.';
   const mapsLink = `https://www.google.com/maps?q=${r.lat},${r.lng}`;
-
-  const templateParams = {
-    to_email:      t.email,
-    to_name:       t.nombre,
-    from_name:     'SPSA Dashboard - elvis.arci@gmail.com',
-    reply_to:      REMITENTE,
-    subject:       `🔔 Nueva asignación OIT ${r.oit} – ${r.distrito}`,
-    oit:           r.oit,
-    sfa:           r.sfa,
-    cliente:       cliente_txt,
-    tipo_oit:      r.tipo_oit,
-    direccion:     r.direccion,
-    distrito:      r.distrito,
-    departamento:  r.departamento,
-    fecha:         r.fecha,
-    dias_txt:      diasTxt,
-    horario:       r.horario,
-    bw:            r.bw,
-    cambio_cpe:    r.cambio_cpe,
-    maps_link:     mapsLink,
-    tecnico:       t.nombre,
-    message: `Estimado/a ${t.nombre},\n\nSe te ha asignado el siguiente trabajo:\n\nOIT: ${r.oit}\nCliente: ${cliente_txt}\nTipo: ${r.tipo_oit}\nDirección: ${r.direccion}\nDistrito: ${r.distrito}, ${r.departamento}\nFecha de migración: ${r.fecha} (${diasTxt})\nHorario: ${r.horario}\nBW: ${r.bw}\nCambio CPE: ${r.cambio_cpe}\nUbicación: ${mapsLink}\n\nSaludos,\nelvis.arci@gmail.com\nSPSA Dashboard`
+  const payload = {
+    accion:       'notificar',
+    oit:          r.oit,
+    fecha:        r.fecha,
+    tecnico:      t.nombre,
+    tecnicoEmail: t.email,
+    distrito:     r.distrito,
+    cliente:      r.cliente,
+    direccion:    r.direccion,
+    horario:      r.horario,
+    bw:           r.bw,
+    cambio_cpe:   r.cambio_cpe,
+    maps_link:    mapsLink
   };
 
   try {
-    // Llamada directa a la REST API de EmailJS (sin SDK) — más confiable desde GitHub Pages
-    const payload = {
-      service_id:      EMAILJS_SERVICE_ID,
-      template_id:     EMAILJS_TEMPLATE_ID,
-      user_id:         EMAILJS_PUBLIC_KEY,
-      accessToken:     '2NIug-DH-aXQ0GiuQgaoo',
-      template_params: templateParams
-    };
-    console.log('📧 Enviando correo EmailJS...', {sid: EMAILJS_SERVICE_ID, tid: EMAILJS_TEMPLATE_ID, pk: EMAILJS_PUBLIC_KEY ? 'OK' : 'VACÍA', to: templateParams.to_email});
-    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+    console.log('📧 Enviando notificación al técnico vía Apps Script...', {to: t.email, oit: r.oit});
+    const res = await fetch(APPS_SCRIPT_URL, {
       method:  'POST',
-      headers: {'Content-Type': 'application/json', 'origin': 'http://localhost'},
+      headers: {'Content-Type': 'text/plain'},
       body:    JSON.stringify(payload)
     });
-    console.log('📧 Respuesta EmailJS:', res.status, res.statusText);
-    if (!res.ok) {
-      const txt = await res.text();
-      return {ok:false, msg:`Error EmailJS: ${res.status} ${txt}`};
-    }
-    return {ok:true, msg:`Correo enviado a ${t.email}`};
+    const json = await res.json();
+    console.log('📧 Respuesta Apps Script:', json);
+    if (json.ok) return {ok:true, msg:`Correo enviado a ${t.email}`};
+    return {ok:false, msg:`Error: ${json.error||'sin detalle'}`};
   } catch(e) {
-    return {ok:false, msg:`Error EmailJS: ${e.text || e.message || JSON.stringify(e)}`};
+    return {ok:false, msg:`Error de red: ${e.message}`};
   }
 }
 
@@ -2360,11 +2338,13 @@ async function notificarFelicitacion(oit) {
         tecnico:      t.nombre,
         message:      mensaje
       };
-      await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method:  'POST',
-        headers: {'Content-Type': 'application/json'},
-        body:    JSON.stringify({service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY, accessToken: '2NIug-DH-aXQ0GiuQgaoo', template_params: felicParams})
-      });
+      if (APPS_SCRIPT_URL) {
+        await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain'},
+          body: JSON.stringify({accion: 'notificar', oit, fecha: r.fecha, tecnico: t.nombre, tecnicoEmail: t.email, distrito: r.distrito, cliente: r.cliente, direccion: r.direccion, horario: '🎉 FELICITACIÓN', bw: '—', cambio_cpe: '—', maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`})
+        }).catch(e => console.error('Error felicitación:', e));
+      }
     } catch(e) { console.error('Error enviando correo de felicitación:', e); }
   }
 
