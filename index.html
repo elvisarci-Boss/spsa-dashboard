@@ -2383,12 +2383,12 @@ async function enviarNotificacionCompleta(oit) {
   const t = TECNICOS.find(x=>x.nombre===r.tecnico);
   const resultados = [];
 
-  // Enviar correo
-  if (t && t.email && EMAILJS_SERVICE_ID) {
+  // Enviar correo al técnico vía Apps Script
+  if (t && t.email && APPS_SCRIPT_URL) {
     const res = await enviarCorreo(oit);
     resultados.push(res.ok ? `✅ Correo → ${t.email}` : `❌ Correo: ${res.msg}`);
   } else if (t && t.email) {
-    resultados.push('⚪ Correo: EmailJS no configurado (abre Notificaciones → Pegar claves EmailJS)');
+    resultados.push('⚪ Correo: Apps Script no configurado (abre Notificaciones → Guía)');
   } else {
     resultados.push('⚪ Correo: técnico sin email registrado');
   }
