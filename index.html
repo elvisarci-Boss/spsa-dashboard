@@ -587,6 +587,18 @@
       <pre id="resumen-texto" style="font-size:0.78rem; color:#e0e6ef; white-space:pre-wrap; line-height:1.6;"></pre>
     </div>
 
+    <!-- LOG DE FELICITACIONES — 100% entregables -->
+    <div style="margin-top:24px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+        <h3 style="font-size:0.95rem; color:#fde68a;">🏆 OITs con 100% de entregables completados</h3>
+        <span style="font-size:0.75rem; color:#64748b;">Registro de notificaciones de felicitación enviadas al técnico</span>
+        <button class="btn btn-gray" style="margin-left:auto; font-size:0.75rem;" onclick="renderLogFelicitaciones()">🔄 Actualizar</button>
+      </div>
+      <div id="log-felicitaciones">
+        <div style="color:#64748b; font-size:0.8rem; padding:12px;">Aún no hay OITs con 100% de entregables completados.</div>
+      </div>
+    </div>
+
     <!-- HISTORIAL DE AUDITORIA (solo Administrador) -->
     <div id="audit-section" style="display:none; margin-top:24px;">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
@@ -1213,6 +1225,46 @@ function aplicarPermisosUI() {
 }
 
 // ---- Registro de auditoría ----
+// ===== LOG DE FELICITACIONES (100% entregables) — se guarda en localStorage =====
+const LOG_FELIC_KEY = 'spsa_log_felicitaciones';
+
+function registrarLogFelicitacion(entry) {
+  const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
+  // Evitar duplicados de la misma OIT
+  const exists = logs.findIndex(l => l.oit === entry.oit);
+  if (exists >= 0) logs[exists] = entry; else logs.unshift(entry);
+  localStorage.setItem(LOG_FELIC_KEY, JSON.stringify(logs));
+  renderLogFelicitaciones();
+}
+
+function renderLogFelicitaciones() {
+  const cont = document.getElementById('log-felicitaciones');
+  if (!cont) return;
+  const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
+  if (!logs.length) {
+    cont.innerHTML = '<div style="color:#64748b; font-size:0.8rem; padding:12px;">Aún no hay OITs con 100% de entregables completados.</div>';
+    return;
+  }
+  cont.innerHTML = logs.map(l => `
+    <div style="background:${l.correoEnviado ? '#0a1f00' : '#1a0a00'};border:1px solid ${l.correoEnviado ? '#22c55e' : '#f87171'};border-radius:8px;padding:10px 14px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <div>
+          <span style="color:#fde68a;font-weight:800;font-size:0.85rem;">🏆 OIT ${l.oit}</span>
+          <span style="color:#94a3b8;font-size:0.75rem;margin-left:8px;">${l.fecha}</span>
+        </div>
+        <span style="background:${l.correoEnviado ? '#064e3b' : '#7f1d1d'};color:${l.correoEnviado ? '#6ee7b7' : '#fca5a5'};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">
+          ${l.correoEnviado ? '✅ Correo enviado' : '❌ Correo no enviado'}
+        </span>
+      </div>
+      <div style="margin-top:6px;font-size:0.78rem;color:#cbd5e1;">
+        👤 Técnico: <strong style="color:#e2e8f0;">${l.tecnico}</strong>
+        &nbsp;·&nbsp; ✉️ ${l.email}
+      </div>
+      <div style="margin-top:3px;font-size:0.72rem;color:#64748b;">${l.correoMsg}</div>
+    </div>
+  `).join('');
+}
+
 async function registrarAuditoria(accion, oit) {
   if (!firebaseOK || !db || !currentUser) return;
   try {
@@ -1722,13 +1774,13 @@ function renderTabla(data) {
       <td>${diasBadge(dias, r.estado)}</td>
       <td class="col-tecnico">
         <select class="tec-sel" onchange="cambiarTecnico('${r.oit}', this.value)"
-          ${tecBloqueado ? 'disabled title="Técnico bloqueado: OIT completada"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede asignar técnicos"' : '')}>
+          ${(pct100 || r.estado === 'COMPLETADO') ? 'disabled title="Bloqueado: editar solo desde el detalle 👁"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede asignar técnicos"' : '')}>
           ${tecnicoOptions(r.tecnico)}
         </select>
       </td>
       <td>
         <select class="estado-sel" onchange="cambiarEstado('${r.oit}', this.value)"
-          ${filaBloqueada ? 'disabled title="Estado bloqueado: 100% entregables. Solo el Administrador puede modificar"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede cambiar el estado"' : '')}>
+          ${pct100 ? 'disabled title="Bloqueado: editar solo desde el detalle 👁"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede cambiar el estado"' : '')}>
           ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
         </select>
       </td>
@@ -2122,6 +2174,7 @@ function setTab(tab, el) {
   if (tab==='tecnicos') renderTecnicos();
   if (tab==='programaciones') renderProgramaciones();
   if (tab==='notif' && puedeVerAuditoria()) renderAuditoria();
+  if (tab==='notif') renderLogFelicitaciones();
   if (tab==='usuarios') { cargarUsuarios(); renderUsuarios(); }
 }
 
@@ -2580,41 +2633,36 @@ async function notificarFelicitacion(oit) {
   if (!t) return;
 
   const mensaje = mensajeFelicitacionAleatorio(t.nombre, oit);
+  let correoEnviado = false;
+  let correoMsg = 'No configurado';
 
-  // Correo de felicitación (reutiliza la misma plantilla EmailJS, con texto de felicitación en los campos)
-  if (t.email && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
+  // Correo de felicitación vía Apps Script
+  if (t.email && APPS_SCRIPT_URL) {
     try {
-      const felicParams = {
-        to_email:     t.email,
-        to_name:      t.nombre,
-        from_name:    'SPSA Dashboard - elvis.arci@gmail.com',
-        reply_to:     REMITENTE,
-        subject:      `🎉 ¡Felicitaciones! OIT ${oit} completada al 100%`,
-        oit:          oit,
-        sfa:          r.sfa,
-        cliente:      '🎊 ¡Trabajo completado con éxito! 🎊',
-        tipo_oit:     'FELICITACIÓN',
-        direccion:    r.direccion,
-        distrito:     r.distrito,
-        departamento: r.departamento,
-        fecha:        r.fecha,
-        dias_txt:     '✅ Completado',
-        horario:      '—',
-        bw:           '—',
-        cambio_cpe:   '—',
-        maps_link:    `https://www.google.com/maps?q=${r.lat},${r.lng}`,
-        tecnico:      t.nombre,
-        message:      mensaje
-      };
-      if (APPS_SCRIPT_URL) {
-        await fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {'Content-Type': 'text/plain'},
-          body: JSON.stringify({accion: 'notificar', oit, fecha: r.fecha, tecnico: t.nombre, tecnicoEmail: t.email, distrito: r.distrito, cliente: r.cliente, direccion: r.direccion, horario: '🎉 FELICITACIÓN', bw: '—', cambio_cpe: '—', maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`})
-        }).catch(e => console.error('Error felicitación:', e));
-      }
-    } catch(e) { console.error('Error enviando correo de felicitación:', e); }
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({accion: 'notificar', oit, fecha: r.fecha, tecnico: t.nombre, tecnicoEmail: t.email, distrito: r.distrito, cliente: r.cliente, direccion: r.direccion, horario: '¡FELICITACIONES! 100% completado', bw: '—', cambio_cpe: '—', maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`})
+      });
+      correoEnviado = true;
+      correoMsg = `Enviado a ${t.email}`;
+    } catch(e) {
+      correoMsg = 'Error al enviar: ' + e.message;
+      console.error('Error felicitación:', e);
+    }
+  } else if (!t.email) {
+    correoMsg = 'Técnico sin email registrado';
   }
+
+  // Registrar en el log de Notificaciones
+  registrarLogFelicitacion({
+    oit,
+    tecnico: t.nombre,
+    email: t.email || '—',
+    correoEnviado,
+    correoMsg,
+    fecha: peruFechaHoraStr()
+  });
 
   // WhatsApp de felicitación
   if (t.cel && t.wa_key) {
