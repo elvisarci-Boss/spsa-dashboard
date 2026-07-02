@@ -1240,29 +1240,57 @@ function registrarLogFelicitacion(entry) {
 function renderLogFelicitaciones() {
   const cont = document.getElementById('log-felicitaciones');
   if (!cont) return;
+
+  // Combinar: OITs con 100% en DATA (fuente de verdad) + log de correos enviados
   const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
-  if (!logs.length) {
+  const logMap = {}; // oit -> entrada de log
+  logs.forEach(l => { logMap[l.oit] = l; });
+
+  // Escanear todas las OITs con 100% de entregables
+  const completadas = DATA.filter(r => {
+    const e = r.entregables || {};
+    return e.acta && e.guia && e.informe;
+  });
+
+  if (!completadas.length) {
     cont.innerHTML = '<div style="color:#64748b; font-size:0.8rem; padding:12px;">Aún no hay OITs con 100% de entregables completados.</div>';
     return;
   }
-  cont.innerHTML = logs.map(l => `
-    <div style="background:${l.correoEnviado ? '#0a1f00' : '#1a0a00'};border:1px solid ${l.correoEnviado ? '#22c55e' : '#f87171'};border-radius:8px;padding:10px 14px;margin-bottom:8px;">
+
+  cont.innerHTML = completadas.map(r => {
+    const t = TECNICOS.find(x => x.nombre === r.tecnico);
+    const logEntry = logMap[r.oit];
+    const correoEnviado = logEntry ? logEntry.correoEnviado : false;
+    const correoMsg = logEntry ? logEntry.correoMsg : 'Correo enviado antes de esta sesión o pendiente de verificar';
+    const fecha = logEntry ? logEntry.fecha : '—';
+    const email = (t && t.email) ? t.email : (logEntry ? logEntry.email : '—');
+
+    return `
+    <div style="background:${correoEnviado ? '#0a1f00' : '#141400'};border:1px solid ${correoEnviado ? '#22c55e' : '#ca8a04'};border-radius:8px;padding:10px 14px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
         <div>
-          <span style="color:#fde68a;font-weight:800;font-size:0.85rem;">🏆 OIT ${l.oit}</span>
-          <span style="color:#94a3b8;font-size:0.75rem;margin-left:8px;">${l.fecha}</span>
+          <span style="color:#fde68a;font-weight:800;font-size:0.85rem;">🏆 OIT ${r.oit}</span>
+          <span style="color:#94a3b8;font-size:0.72rem;margin-left:8px;">${r.distrito} · ${r.cliente?.split(' ')[0]||''}</span>
+          ${fecha !== '—' ? `<span style="color:#64748b;font-size:0.7rem;margin-left:8px;">${fecha}</span>` : ''}
         </div>
-        <span style="background:${l.correoEnviado ? '#064e3b' : '#7f1d1d'};color:${l.correoEnviado ? '#6ee7b7' : '#fca5a5'};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">
-          ${l.correoEnviado ? '✅ Correo enviado' : '❌ Correo no enviado'}
+        <span style="background:${correoEnviado ? '#064e3b' : '#713f12'};color:${correoEnviado ? '#6ee7b7' : '#fde68a'};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">
+          ${correoEnviado ? '✅ Correo de felicitación enviado' : '⚠️ Correo pendiente / no enviado'}
         </span>
       </div>
       <div style="margin-top:6px;font-size:0.78rem;color:#cbd5e1;">
-        👤 Técnico: <strong style="color:#e2e8f0;">${l.tecnico}</strong>
-        &nbsp;·&nbsp; ✉️ ${l.email}
+        👤 Técnico: <strong style="color:#e2e8f0;">${r.tecnico || '—'}</strong>
+        &nbsp;·&nbsp; ✉️ ${email}
+        &nbsp;·&nbsp; Estado: <span style="color:#34d399;font-weight:700;">${r.estado}</span>
       </div>
-      <div style="margin-top:3px;font-size:0.72rem;color:#64748b;">${l.correoMsg}</div>
-    </div>
-  `).join('');
+      <div style="margin-top:4px;display:flex;gap:6px;">
+        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Acta</span>
+        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Guía</span>
+        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Informe</span>
+      </div>
+      ${correoMsg && correoMsg !== 'Correo enviado antes de esta sesión o pendiente de verificar'
+        ? `<div style="margin-top:3px;font-size:0.72rem;color:#64748b;">${correoMsg}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 async function registrarAuditoria(accion, oit) {
@@ -1557,6 +1585,7 @@ function initData() {
     renderAlertas();
     renderTecnicos();
     if (firstLoadData) { renderFiltroTecnico(); firstLoadData=false; }
+    renderLogFelicitaciones(); // actualizar log de OITs con 100% cada vez que llegan datos
   }, err => {
     console.error('Error escuchando trabajos:', err);
     setSyncStatus('🔴 Error de sincronización', '#fca5a5');
