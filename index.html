@@ -188,6 +188,12 @@
   /* Fila STANDBY resaltada en verde fosforescente */
   tr.row-standby { background: #0a1f08 !important; outline: 1px solid #39ff1433; }
   tr.row-standby td { color: #d1ffd1 !important; }
+  /* Fila 100% entregables — amarillo brillante, bloqueada para no-admin */
+  tr.row-completa { background: linear-gradient(90deg, #1a1500 0%, #2a2000 100%) !important; outline: 2px solid #fbbf24aa; }
+  tr.row-completa td { color: #fde68a !important; }
+  tr.row-completa select, tr.row-completa button, tr.row-completa a, tr.row-completa input { opacity: 0.4; pointer-events: none; cursor: not-allowed !important; }
+  tr.row-completa .row-lock-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; color: #fbbf24; font-weight: 700; }
+  .row-lock-badge { display: none; }
 
   .dias-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 0.75rem; }
   .dias-hoy { background: #854d0e; color: #fef08a; }
@@ -714,7 +720,10 @@
     </div>
     <div class="modal-btns">
       <button class="btn btn-gray" onclick="cerrarModal('modalDetalle')">Cancelar</button>
-      <button class="btn btn-green" onclick="guardarDetalle()">💾 Guardar</button>
+      <div id="modal-lock-warn" style="display:none;background:#1a1100;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.8rem;color:#fde68a;">
+        🔒 Esta OIT tiene el 100% de entregables completados y está <strong>bloqueada</strong>. Solo el <strong>Administrador</strong> puede realizar cambios.
+      </div>
+      <button id="btn-guardar-detalle" class="btn btn-green" onclick="guardarDetalle()">💾 Guardar</button>
     </div>
   </div>
 </div>
@@ -1678,9 +1687,28 @@ function renderTabla(data) {
   if (!data.length) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No se encontraron registros</td></tr>'; return; }
   tbody.innerHTML = data.map(r => {
     const dias = diasHasta(r.fecha);
-    const cls = r.estado === 'STANDBY' ? 'row-standby' : (dias === 0 ? 'row-hoy' : (dias < 0 && r.estado !== 'COMPLETADO') ? 'row-vence' : '');
+    const e = r.entregables || {};
+    const pct100 = e.acta && e.guia && e.informe; // 100% de entregables
+
+    // Determinar clase de fila
+    let cls = '';
+    if (pct100) cls = 'row-completa';
+    else if (r.estado === 'STANDBY') cls = 'row-standby';
+    else if (dias === 0) cls = 'row-hoy';
+    else if (dias < 0 && r.estado !== 'COMPLETADO') cls = 'row-vence';
+
     const cliente_short = r.sfa === '551870' ? 'HARD DISCOUNT' : 'SPSA';
-    return `<tr class="${cls}">
+
+    // Regla 1: técnico bloqueado si estado=COMPLETADO o 100% entregables (salvo admin)
+    const tecBloqueado = !esAdmin() && (r.estado === 'COMPLETADO' || pct100);
+
+    // Regla 2: toda la fila bloqueada si 100% entregables (salvo admin)
+    const filaBloqueada = !esAdmin() && pct100;
+
+    // Lock badge para mostrar en acciones
+    const lockBadge = pct100 ? `<span class="row-lock-badge">🔒 Completa</span>` : '';
+
+    return `<tr class="${cls}" title="${pct100 && !esAdmin() ? 'Fila bloqueada: 100% entregables completados. Solo el Administrador puede modificar.' : ''}">
       <td>${r.n}</td>
       <td><strong>${r.oit}</strong></td>
       <td>${r.sfa}</td>
@@ -1693,12 +1721,14 @@ function renderTabla(data) {
       <td><small>${r.horario||'-'}</small></td>
       <td>${diasBadge(dias, r.estado)}</td>
       <td class="col-tecnico">
-        <select class="tec-sel" onchange="cambiarTecnico('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede asignar técnicos"':''}>
+        <select class="tec-sel" onchange="cambiarTecnico('${r.oit}', this.value)"
+          ${tecBloqueado ? 'disabled title="Técnico bloqueado: OIT completada"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede asignar técnicos"' : '')}>
           ${tecnicoOptions(r.tecnico)}
         </select>
       </td>
       <td>
-        <select class="estado-sel" onchange="cambiarEstado('${r.oit}', this.value)" ${!esAdmin()?'disabled title="Solo el Administrador puede cambiar el estado"':''}>
+        <select class="estado-sel" onchange="cambiarEstado('${r.oit}', this.value)"
+          ${filaBloqueada ? 'disabled title="Estado bloqueado: 100% entregables. Solo el Administrador puede modificar"' : (!esAdmin() ? 'disabled title="Solo el Administrador puede cambiar el estado"' : '')}>
           ${['PENDIENTE','EN PROCESO','COMPLETADO','VENCIDO','STANDBY'].map(e=>`<option ${r.estado===e?'selected':''}>${e}</option>`).join('')}
         </select>
       </td>
@@ -1706,9 +1736,12 @@ function renderTabla(data) {
       <td class="col-guia-inst guia-cell">${renderGuia(r.oit, 'guiaInst', r.guiaInst)}</td>
       <td class="col-guia-desinst guia-cell">${renderGuia(r.oit, 'guiaDesinst', r.guiaDesinst)}</td>
       <td class="col-acciones">
-        <button class="btn btn-gray" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirDetalle('${r.oit}')">👁</button>
-        <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" class="btn btn-blue" style="padding:3px 8px; font-size:0.72rem; text-decoration:none;">📍</a>
-        <button class="btn btn-purple" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirNotificar('${r.oit}')">📤</button>
+        ${pct100 && !esAdmin()
+          ? `<span class="row-lock-badge">🔒 Completa — solo Admin puede editar</span>`
+          : `<button class="btn btn-gray" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirDetalle('${r.oit}')">👁</button>
+             <a href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" class="btn btn-blue" style="padding:3px 8px; font-size:0.72rem; text-decoration:none;">📍</a>
+             <button class="btn btn-purple" style="padding:3px 8px; font-size:0.72rem;" onclick="abrirNotificar('${r.oit}')">📤</button>`
+        }
       </td>
     </tr>`;
   }).join('');
@@ -1937,8 +1970,33 @@ function cambiarTecnico(oit, tecnico) {
 
 function abrirDetalle(oit) {
   const r = DATA.find(d=>d.oit===oit);
-  editando = oit;
-  document.getElementById('modal-title').textContent = `Detalle – ${r.oit}`;
+  const e = r.entregables || {};
+  const pct100 = e.acta && e.guia && e.informe;
+  const bloqueado = pct100 && !esAdmin();
+
+  editando = bloqueado ? null : oit; // si bloqueado, no permite guardar
+  document.getElementById('modal-title').textContent = `Detalle – ${r.oit}${bloqueado ? ' 🔒 (Solo lectura)' : ''}`;
+
+  // Bloquear/desbloquear campos del modal según estado de bloqueo
+  const btnGuardar = document.getElementById('btn-guardar-detalle');
+  if (btnGuardar) {
+    btnGuardar.disabled = bloqueado;
+    btnGuardar.title = bloqueado ? 'Fila bloqueada: 100% entregables. Solo el Administrador puede modificar.' : '';
+    btnGuardar.style.opacity = bloqueado ? '0.4' : '1';
+  }
+  ['modal-estado','modal-tecnico','modal-fecha','modal-notas-nueva'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = bloqueado; el.style.opacity = bloqueado ? '0.5' : '1'; }
+  });
+
+  if (bloqueado) {
+    const warn = document.getElementById('modal-lock-warn');
+    if (warn) warn.style.display = 'block';
+  } else {
+    const warn = document.getElementById('modal-lock-warn');
+    if (warn) warn.style.display = 'none';
+  }
+
   document.getElementById('modal-info').innerHTML = [
     ['OIT',r.oit],['SFA',r.sfa],['Cliente',r.cliente],['Tipo OIT',r.tipo_oit],
     ['Dirección',r.direccion],['Distrito',r.distrito],['Departamento',r.departamento],
