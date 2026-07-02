@@ -1241,12 +1241,10 @@ function renderLogFelicitaciones() {
   const cont = document.getElementById('log-felicitaciones');
   if (!cont) return;
 
-  // Combinar: OITs con 100% en DATA (fuente de verdad) + log de correos enviados
   const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
-  const logMap = {}; // oit -> entrada de log
+  const logMap = {};
   logs.forEach(l => { logMap[l.oit] = l; });
 
-  // Escanear todas las OITs con 100% de entregables
   const completadas = DATA.filter(r => {
     const e = r.entregables || {};
     return e.acta && e.guia && e.informe;
@@ -1261,36 +1259,92 @@ function renderLogFelicitaciones() {
     const t = TECNICOS.find(x => x.nombre === r.tecnico);
     const logEntry = logMap[r.oit];
     const correoEnviado = logEntry ? logEntry.correoEnviado : false;
-    const correoMsg = logEntry ? logEntry.correoMsg : 'Correo enviado antes de esta sesión o pendiente de verificar';
-    const fecha = logEntry ? logEntry.fecha : '—';
-    const email = (t && t.email) ? t.email : (logEntry ? logEntry.email : '—');
+    const fecha = logEntry ? logEntry.fecha : null;
+    const email = (t && t.email) ? t.email : (logEntry ? logEntry.email : null);
+
+    const estadoCorreo = correoEnviado
+      ? `<span style="background:#064e3b;color:#6ee7b7;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">✅ Correo enviado${fecha ? ' · ' + fecha : ''}</span>`
+      : `<span style="background:#1a1200;color:#fde68a;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">⚠️ Sin registro de envío en esta sesión</span>`;
+
+    const btnReenviar = (APPS_SCRIPT_URL && email)
+      ? `<button class="btn btn-green" style="padding:3px 10px;font-size:0.72rem;margin-top:8px;" onclick="reenviarFelicitacion('${r.oit}',this)">📧 ${correoEnviado ? 'Reenviar felicitación' : 'Enviar felicitación ahora'} → ${email}</button>`
+      : (!email ? `<div style="font-size:0.72rem;color:#f87171;margin-top:6px;">⚠️ Técnico sin email registrado — no se puede enviar correo</div>` : `<div style="font-size:0.72rem;color:#f87171;margin-top:6px;">⚠️ Apps Script no configurado</div>`);
 
     return `
-    <div style="background:${correoEnviado ? '#0a1f00' : '#141400'};border:1px solid ${correoEnviado ? '#22c55e' : '#ca8a04'};border-radius:8px;padding:10px 14px;margin-bottom:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+    <div style="background:#0d1a00;border:1px solid ${correoEnviado ? '#22c55e55' : '#ca8a0444'};border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:6px;">
         <div>
-          <span style="color:#fde68a;font-weight:800;font-size:0.85rem;">🏆 OIT ${r.oit}</span>
-          <span style="color:#94a3b8;font-size:0.72rem;margin-left:8px;">${r.distrito} · ${r.cliente?.split(' ')[0]||''}</span>
-          ${fecha !== '—' ? `<span style="color:#64748b;font-size:0.7rem;margin-left:8px;">${fecha}</span>` : ''}
+          <span style="color:#fde68a;font-weight:800;font-size:0.88rem;">🏆 OIT ${r.oit}</span>
+          <span style="color:#94a3b8;font-size:0.72rem;margin-left:8px;">${r.distrito}</span>
         </div>
-        <span style="background:${correoEnviado ? '#064e3b' : '#713f12'};color:${correoEnviado ? '#6ee7b7' : '#fde68a'};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;">
-          ${correoEnviado ? '✅ Correo de felicitación enviado' : '⚠️ Correo pendiente / no enviado'}
-        </span>
+        ${estadoCorreo}
       </div>
-      <div style="margin-top:6px;font-size:0.78rem;color:#cbd5e1;">
-        👤 Técnico: <strong style="color:#e2e8f0;">${r.tecnico || '—'}</strong>
-        &nbsp;·&nbsp; ✉️ ${email}
-        &nbsp;·&nbsp; Estado: <span style="color:#34d399;font-weight:700;">${r.estado}</span>
+      <div style="margin-top:8px;font-size:0.78rem;color:#cbd5e1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <span>👤 <strong style="color:#e2e8f0;">${r.tecnico || '—'}</strong></span>
+        ${email ? `<span>✉️ ${email}</span>` : '<span style="color:#f87171;">Sin email</span>'}
+        <span style="color:#34d399;font-weight:700;">Estado: ${r.estado}</span>
       </div>
-      <div style="margin-top:4px;display:flex;gap:6px;">
-        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Acta</span>
-        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Guía</span>
-        <span style="font-size:0.7rem;color:#6ee7b7;">✅ Informe</span>
+      <div style="margin-top:6px;display:flex;gap:8px;">
+        <span style="font-size:0.7rem;background:#064e3b;color:#6ee7b7;padding:1px 6px;border-radius:6px;">✅ Acta</span>
+        <span style="font-size:0.7rem;background:#064e3b;color:#6ee7b7;padding:1px 6px;border-radius:6px;">✅ Guía</span>
+        <span style="font-size:0.7rem;background:#064e3b;color:#6ee7b7;padding:1px 6px;border-radius:6px;">✅ Informe</span>
       </div>
-      ${correoMsg && correoMsg !== 'Correo enviado antes de esta sesión o pendiente de verificar'
-        ? `<div style="margin-top:3px;font-size:0.72rem;color:#64748b;">${correoMsg}</div>` : ''}
+      ${btnReenviar}
     </div>`;
   }).join('');
+}
+
+async function reenviarFelicitacion(oit, btn) {
+  if (!APPS_SCRIPT_URL) { alert('Apps Script no configurado'); return; }
+  const r = DATA.find(d => d.oit === oit);
+  const t = TECNICOS.find(x => x.nombre === r?.tecnico);
+  if (!t || !t.email) { alert('El técnico asignado no tiene email registrado.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain'},
+      body: JSON.stringify({
+        accion: 'notificar',
+        oit: r.oit,
+        fecha: r.fecha,
+        tecnico: t.nombre,
+        tecnicoEmail: t.email,
+        distrito: r.distrito,
+        cliente: r.cliente,
+        direccion: r.direccion,
+        horario: 'Felicitaciones - 100% de entregables completados',
+        bw: r.bw || '—',
+        cambio_cpe: r.cambio_cpe || '—',
+        maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`
+      })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      registrarLogFelicitacion({
+        oit,
+        tecnico: t.nombre,
+        email: t.email,
+        correoEnviado: true,
+        correoMsg: `Enviado a ${t.email}`,
+        fecha: peruFechaHoraStr()
+      });
+      btn.textContent = '✅ Enviado a ' + t.email;
+      btn.style.background = '#064e3b';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '❌ Error — intentar de nuevo';
+      btn.style.background = '#7f1d1d';
+      console.error('Error reenvío felicitación:', json.error);
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '❌ Error de red — intentar de nuevo';
+    console.error('Error reenvío felicitación:', e);
+  }
 }
 
 async function registrarAuditoria(accion, oit) {
