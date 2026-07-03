@@ -1298,7 +1298,17 @@ async function reenviarFelicitacion(oit, btn) {
   if (!APPS_SCRIPT_URL) { alert('Apps Script no configurado'); return; }
   const r = DATA.find(d => d.oit === oit);
   const t = TECNICOS.find(x => x.nombre === r?.tecnico);
-  if (!t || !t.email) { alert('El técnico asignado no tiene email registrado.'); return; }
+
+  // DIAGNÓSTICO — ver exactamente qué datos tiene el técnico en Firestore
+  console.log('🔍 OIT:', oit);
+  console.log('🔍 Técnico asignado en DATA:', r?.tecnico);
+  console.log('🔍 Técnico encontrado en TECNICOS:', t);
+  console.log('🔍 Email que se enviará:', t?.email);
+
+  if (!t || !t.email) {
+    alert(`El técnico "${r?.tecnico}" no tiene email registrado en la pestaña "Carga de Técnicos".\n\nVe a esa pestaña, edita al técnico y verifica que su correo sea correcto.`);
+    return;
+  }
 
   btn.disabled = true;
   btn.textContent = '⏳ Enviando...';
