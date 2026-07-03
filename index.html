@@ -1321,7 +1321,23 @@ async function reenviarFelicitacion(oit, btn) {
         cambio_cpe: r.cambio_cpe || '—'
       })
     });
-    const json = await res.json();
+
+    // Leer respuesta como texto primero para diagnóstico
+    const rawText = await res.text();
+    console.log('📧 Respuesta Apps Script (raw):', rawText);
+
+    let json;
+    try {
+      json = JSON.parse(rawText);
+    } catch(parseErr) {
+      console.error('Error parseando JSON de Apps Script:', rawText);
+      btn.disabled = false;
+      btn.textContent = '❌ Error de respuesta — ver consola';
+      btn.style.background = '#7f1d1d';
+      alert('Apps Script respondió algo inesperado. Abre la consola (F12) y mira el mensaje "Respuesta Apps Script (raw)" para ver el error exacto.\n\n¿Actualizaste el Code.gs con la versión nueva que incluye la función felicitarTecnico?');
+      return;
+    }
+
     if (json.ok) {
       registrarLogFelicitacion({
         oit,
@@ -1333,15 +1349,18 @@ async function reenviarFelicitacion(oit, btn) {
       });
       btn.textContent = '✅ Enviado a ' + t.email;
       btn.style.background = '#064e3b';
+      setTimeout(() => renderLogFelicitaciones(), 500);
     } else {
+      console.error('Error en Apps Script:', json.error);
       btn.disabled = false;
-      btn.textContent = '❌ Error — intentar de nuevo';
+      btn.textContent = '❌ Error: ' + (json.error || 'ver consola');
       btn.style.background = '#7f1d1d';
-      console.error('Error reenvío felicitación:', json.error);
+      alert('Error de Apps Script: ' + (json.error || 'Error desconocido') + '\n\n¿Actualizaste el Code.gs y publicaste una nueva versión?');
     }
   } catch(e) {
     btn.disabled = false;
     btn.textContent = '❌ Error de red — intentar de nuevo';
+    btn.style.background = '#7f1d1d';
     console.error('Error reenvío felicitación:', e);
   }
 }
