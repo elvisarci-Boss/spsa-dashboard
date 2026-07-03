@@ -1308,7 +1308,7 @@ async function reenviarFelicitacion(oit, btn) {
       method: 'POST',
       headers: {'Content-Type': 'text/plain'},
       body: JSON.stringify({
-        accion: 'notificar',
+        accion: 'felicitar',
         oit: r.oit,
         fecha: r.fecha,
         tecnico: t.nombre,
@@ -1316,10 +1316,9 @@ async function reenviarFelicitacion(oit, btn) {
         distrito: r.distrito,
         cliente: r.cliente,
         direccion: r.direccion,
-        horario: 'Felicitaciones - 100% de entregables completados',
+        horario: r.horario || '—',
         bw: r.bw || '—',
-        cambio_cpe: r.cambio_cpe || '—',
-        maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`
+        cambio_cpe: r.cambio_cpe || '—'
       })
     });
     const json = await res.json();
@@ -2725,7 +2724,19 @@ async function notificarFelicitacion(oit) {
       await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         headers: {'Content-Type': 'text/plain'},
-        body: JSON.stringify({accion: 'notificar', oit, fecha: r.fecha, tecnico: t.nombre, tecnicoEmail: t.email, distrito: r.distrito, cliente: r.cliente, direccion: r.direccion, horario: '¡FELICITACIONES! 100% completado', bw: '—', cambio_cpe: '—', maps_link: `https://www.google.com/maps?q=${r.lat},${r.lng}`})
+        body: JSON.stringify({
+          accion: 'felicitar',
+          oit,
+          fecha: r.fecha,
+          tecnico: t.nombre,
+          tecnicoEmail: t.email,
+          distrito: r.distrito,
+          cliente: r.cliente,
+          direccion: r.direccion,
+          horario: r.horario || '—',
+          bw: r.bw || '—',
+          cambio_cpe: r.cambio_cpe || '—'
+        })
       });
       correoEnviado = true;
       correoMsg = `Enviado a ${t.email}`;
