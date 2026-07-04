@@ -1272,17 +1272,18 @@ function aplicarPermisosUI() {
 function renderEntregablesTab() {
   // ---- KPIs ----
   const total = DATA.length;
+  const completadas = DATA.filter(r => r.estado === 'COMPLETADO');
   const completos100 = DATA.filter(r => { const e=r.entregables||{}; return e.acta&&e.guia&&e.informe; });
-  const faltaActa    = DATA.filter(r => { const e=r.entregables||{}; return !e.acta; });
-  const faltaGuia    = DATA.filter(r => { const e=r.entregables||{}; return !e.guia; });
-  const faltaInforme = DATA.filter(r => { const e=r.entregables||{}; return !e.informe; });
+  const faltaActa    = completadas.filter(r => { const e=r.entregables||{}; return !e.acta; });
+  const faltaGuia    = completadas.filter(r => { const e=r.entregables||{}; return !e.guia; });
+  const faltaInforme = completadas.filter(r => { const e=r.entregables||{}; return !e.informe; });
 
   const kpiData = [
     { label:'100% Completos',   val: completos100.length, total, color:'#22c55e', bg:'#064e3b', icon:'🏆', sub:`de ${total} OITs` },
-    { label:'OITs Completadas', val: DATA.filter(r=>r.estado==='COMPLETADO').length, total, color:'#34d399', bg:'#065f46', icon:'✅', sub:'estado COMPLETADO' },
-    { label:'Faltan Actas',     val: faltaActa.length,    total, color:'#f87171', bg:'#7f1d1d', icon:'📄', sub:`${total-faltaActa.length} tienen acta` },
-    { label:'Faltan Guías',     val: faltaGuia.length,    total, color:'#fbbf24', bg:'#78350f', icon:'📋', sub:`${total-faltaGuia.length} tienen guía` },
-    { label:'Faltan Informes',  val: faltaInforme.length, total, color:'#c4b5fd', bg:'#4c1d95', icon:'📝', sub:`${total-faltaInforme.length} tienen informe` },
+    { label:'OITs Completadas', val: completadas.length,  total, color:'#34d399', bg:'#065f46', icon:'✅', sub:'estado COMPLETADO' },
+    { label:'Faltan Actas',     val: faltaActa.length,    total: completadas.length, color:'#f87171', bg:'#7f1d1d', icon:'📄', sub:`en OITs completadas` },
+    { label:'Faltan Guías',     val: faltaGuia.length,    total: completadas.length, color:'#fbbf24', bg:'#78350f', icon:'📋', sub:`en OITs completadas` },
+    { label:'Faltan Informes',  val: faltaInforme.length, total: completadas.length, color:'#c4b5fd', bg:'#4c1d95', icon:'📝', sub:`en OITs completadas` },
   ];
 
   const kpiCont = document.getElementById('entregables-kpis');
@@ -1907,7 +1908,7 @@ function renderEntregables(oit, e) {
     <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${color}"></div></div>`;
 }
 
-function toggleEntregable(oit, key) {
+async function toggleEntregable(oit, key) {
   if (!puedeEditarEntregables()) { alert('No tienes permiso para editar entregables.'); return; }
   const idx = DATA.findIndex(d=>d.oit===oit);
   if (idx<0) return;
@@ -1923,9 +1924,10 @@ function toggleEntregable(oit, key) {
   // Re-render just that cell for speed
   const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
   cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
-  // If all done, auto-complete
+  // Si todos los entregables completados, enviar felicitación automáticamente
   if (e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
-    notificarFelicitacion(oit);
+    console.log('🏆 100% alcanzado para OIT', oit, '— APPS_SCRIPT_URL:', APPS_SCRIPT_URL ? 'configurado ✅' : 'NO configurado ❌');
+    await notificarFelicitacion(oit);
     if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
       cambiarEstado(oit, 'COMPLETADO');
     }
@@ -1954,7 +1956,7 @@ function renderGuia(oit, tipo, g) {
     </div>`;
 }
 
-function guardarGuia(oit, tipo, campo, valor) {
+async function guardarGuia(oit, tipo, campo, valor) {
   if (!puedeEditarGuias()) { alert('No tienes permiso para editar guías.'); return; }
   const idx = DATA.findIndex(d=>d.oit===oit);
   if (idx<0) return;
@@ -1987,7 +1989,8 @@ function guardarGuia(oit, tipo, campo, valor) {
     const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
     cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
     if (instCompleta && e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
-      notificarFelicitacion(oit);
+      console.log('🏆 100% alcanzado al guardar OIT', oit, '— APPS_SCRIPT_URL:', APPS_SCRIPT_URL ? 'configurado ✅' : 'NO configurado ❌');
+      await notificarFelicitacion(oit);
       if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
         cambiarEstado(oit, 'COMPLETADO');
       }
@@ -2349,7 +2352,7 @@ function abrirDetalle(oit) {
   document.getElementById('modalDetalle').classList.add('open');
 }
 
-function guardarDetalle() {
+async function guardarDetalle() {
   if (!editando) return;
   const estado = document.getElementById('modal-estado').value;
   const tecnico = document.getElementById('modal-tecnico').value;
