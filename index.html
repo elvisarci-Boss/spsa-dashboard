@@ -1481,6 +1481,7 @@ async function reenviarFelicitacion(oit, btn) {
 
   btn.disabled = true;
   btn.textContent = '⏳ Enviando...';
+  localStorage.removeItem(`felic_enviado_${oit}`); // permitir reenvío manual
 
   try {
     const res = await fetch(APPS_SCRIPT_URL, {
@@ -1936,12 +1937,18 @@ async function toggleEntregable(oit, key) {
   // Re-render just that cell for speed
   const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
   cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
-  // Si todos los entregables completados, enviar felicitación automáticamente
-  if (e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
-    console.log('🏆 100% alcanzado para OIT', oit, '— APPS_SCRIPT_URL:', APPS_SCRIPT_URL ? 'configurado ✅' : 'NO configurado ❌');
-    await notificarFelicitacion(oit);
-    if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
-      cambiarEstado(oit, 'COMPLETADO');
+  // Si todos los entregables completados → enviar felicitación automáticamente
+  if (e.acta && e.guia && e.informe) {
+    const yaEnviado = localStorage.getItem(`felic_enviado_${oit}`);
+    if (!yaEnviado) {
+      console.log('🏆 100% alcanzado para OIT', oit, '— enviando felicitación automática...');
+      localStorage.setItem(`felic_enviado_${oit}`, '1'); // marcar para no enviar doble
+      await notificarFelicitacion(oit);
+    }
+    if (DATA[idx].estado !== 'COMPLETADO') {
+      if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
+        cambiarEstado(oit, 'COMPLETADO');
+      }
     }
   }
 }
@@ -2000,11 +2007,17 @@ async function guardarGuia(oit, tipo, campo, valor) {
   if (cambioEntregable) {
     const cells = document.querySelectorAll(`[data-oit="${oit}"]`);
     cells.forEach(cell => { cell.innerHTML = renderEntregables(oit, e); });
-    if (instCompleta && e.acta && e.guia && e.informe && DATA[idx].estado !== 'COMPLETADO') {
-      console.log('🏆 100% alcanzado al guardar OIT', oit, '— APPS_SCRIPT_URL:', APPS_SCRIPT_URL ? 'configurado ✅' : 'NO configurado ❌');
-      await notificarFelicitacion(oit);
-      if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
-        cambiarEstado(oit, 'COMPLETADO');
+    if (instCompleta && e.acta && e.guia && e.informe) {
+      const yaEnviado = localStorage.getItem(`felic_enviado_${oit}`);
+      if (!yaEnviado) {
+        console.log('🏆 100% alcanzado al guardar OIT', oit, '— enviando felicitación automática...');
+        localStorage.setItem(`felic_enviado_${oit}`, '1');
+        await notificarFelicitacion(oit);
+      }
+      if (DATA[idx].estado !== 'COMPLETADO') {
+        if (confirm(`✅ Los 3 entregables de ${oit} están completos. ¿Cambiar estado a COMPLETADO?`)) {
+          cambiarEstado(oit, 'COMPLETADO');
+        }
       }
     }
   }
