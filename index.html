@@ -1278,6 +1278,15 @@ function renderEntregablesTab() {
   const faltaGuia    = completadas.filter(r => { const e=r.entregables||{}; return !e.guia; });
   const faltaInforme = completadas.filter(r => { const e=r.entregables||{}; return !e.informe; });
 
+  // Diagnóstico — ver muestra de entregables en OITs completadas
+  console.log('📊 Entregables KPI diagnóstico:');
+  console.log('  Total OITs:', total);
+  console.log('  Completadas (estado=COMPLETADO):', completadas.length);
+  console.log('  Con 100% entregables:', completos100.length);
+  console.log('  Faltan Actas:', faltaActa.length, faltaActa.slice(0,3).map(r=>({oit:r.oit, entregables:r.entregables})));
+  console.log('  Faltan Guías:', faltaGuia.length, faltaGuia.slice(0,3).map(r=>({oit:r.oit, entregables:r.entregables})));
+  console.log('  Faltan Informes:', faltaInforme.length, faltaInforme.slice(0,3).map(r=>({oit:r.oit, entregables:r.entregables})));
+
   const kpiData = [
     { label:'100% Completos',   val: completos100.length, total,                    color:'#22c55e', bg:'#064e3b', icon:'🏆', sub:`de ${total} OITs totales` },
     { label:'OITs Completadas', val: completadas.length,  total,                    color:'#34d399', bg:'#065f46', icon:'✅', sub:`de ${total} OITs totales` },
