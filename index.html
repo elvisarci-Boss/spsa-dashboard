@@ -2437,7 +2437,7 @@ function setTab(tab, el) {
   if (tab==='usuarios' && !puedeGestionarUsuarios()) { alert('No tienes permiso para acceder a esta sección.'); return; }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  ['tabla','alertas','sectores','tecnicos','notif','programaciones','usuarios'].forEach(t=>document.getElementById('tab-'+t).style.display=t===tab?'block':'none');
+  ['tabla','alertas','sectores','tecnicos','notif','programaciones','entregables','usuarios'].forEach(t=>document.getElementById('tab-'+t).style.display=t===tab?'block':'none');
   if (tab==='alertas') renderAlertas();
   if (tab==='sectores') renderSectores();
   if (tab==='tecnicos') renderTecnicos();
