@@ -422,6 +422,7 @@
   <div class="tab" onclick="setTab('tecnicos',this)">👤 Carga de Técnicos</div>
   <div class="tab" onclick="setTab('notif',this)">📲 Notificaciones</div>
   <div class="tab" onclick="setTab('programaciones',this)">📅 Programaciones</div>
+  <div class="tab" onclick="setTab('entregables',this)">📦 Entregables</div>
   <div class="tab" id="tabUsuariosBtn" onclick="setTab('usuarios',this)" style="display:none;">👥 Usuarios</div>
 </div>
 </div><!-- /sticky-top-wrap -->
@@ -643,6 +644,48 @@
           <tbody id="week-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- ENTREGABLES -->
+  <div id="tab-entregables" style="display:none">
+    <!-- KPIs de entregables -->
+    <div id="entregables-kpis" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;"></div>
+
+    <!-- Filtro y lista -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+      <h3 style="font-size:0.95rem;color:#93c5fd;margin:0;">📋 OITs con 100% de entregables</h3>
+      <select id="filtEntregTec" onchange="renderEntregablesTab()" style="background:#0f1923;border:1px solid #1e3a5f;color:#e0e6ef;padding:6px 12px;border-radius:6px;font-size:0.82rem;">
+        <option value="">Todos los técnicos</option>
+      </select>
+      <select id="filtEntregEstado" onchange="renderEntregablesTab()" style="background:#0f1923;border:1px solid #1e3a5f;color:#e0e6ef;padding:6px 12px;border-radius:6px;font-size:0.82rem;">
+        <option value="100">Solo 100% completos</option>
+        <option value="acta">Faltan Actas</option>
+        <option value="guia">Faltan Guías</option>
+        <option value="informe">Faltan Informes</option>
+        <option value="">Todos</option>
+      </select>
+      <span id="entregables-contador" style="margin-left:auto;font-size:0.8rem;color:#64748b;"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tabla-entregables">
+        <thead>
+          <tr>
+            <th>OIT</th>
+            <th>Cliente</th>
+            <th>Distrito</th>
+            <th>Departamento</th>
+            <th>Técnico</th>
+            <th style="text-align:center;">Acta</th>
+            <th style="text-align:center;">Guía</th>
+            <th style="text-align:center;">Informe</th>
+            <th style="text-align:center;">% Avance</th>
+            <th>Estado OIT</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-entregables"></tbody>
+      </table>
     </div>
   </div>
 
@@ -1225,7 +1268,120 @@ function aplicarPermisosUI() {
 }
 
 // ---- Registro de auditoría ----
-// ===== LOG DE FELICITACIONES (100% entregables) — se guarda en localStorage =====
+// ===== PESTAÑA ENTREGABLES =====
+function renderEntregablesTab() {
+  // ---- KPIs ----
+  const total = DATA.length;
+  const completos100 = DATA.filter(r => { const e=r.entregables||{}; return e.acta&&e.guia&&e.informe; });
+  const faltaActa    = DATA.filter(r => { const e=r.entregables||{}; return !e.acta; });
+  const faltaGuia    = DATA.filter(r => { const e=r.entregables||{}; return !e.guia; });
+  const faltaInforme = DATA.filter(r => { const e=r.entregables||{}; return !e.informe; });
+
+  const kpiData = [
+    { label:'100% Completos',   val: completos100.length, total, color:'#22c55e', bg:'#064e3b', icon:'🏆', sub:`de ${total} OITs` },
+    { label:'OITs Completadas', val: DATA.filter(r=>r.estado==='COMPLETADO').length, total, color:'#34d399', bg:'#065f46', icon:'✅', sub:'estado COMPLETADO' },
+    { label:'Faltan Actas',     val: faltaActa.length,    total, color:'#f87171', bg:'#7f1d1d', icon:'📄', sub:`${total-faltaActa.length} tienen acta` },
+    { label:'Faltan Guías',     val: faltaGuia.length,    total, color:'#fbbf24', bg:'#78350f', icon:'📋', sub:`${total-faltaGuia.length} tienen guía` },
+    { label:'Faltan Informes',  val: faltaInforme.length, total, color:'#c4b5fd', bg:'#4c1d95', icon:'📝', sub:`${total-faltaInforme.length} tienen informe` },
+  ];
+
+  const kpiCont = document.getElementById('entregables-kpis');
+  if (kpiCont) {
+    kpiCont.innerHTML = kpiData.map(k => `
+      <div style="background:${k.bg};border:1px solid ${k.color}44;border-radius:12px;padding:14px 18px;min-width:140px;flex:1;position:relative;overflow:hidden;">
+        <div style="font-size:1.6rem;margin-bottom:4px;">${k.icon}</div>
+        <div style="font-size:1.6rem;font-weight:900;color:${k.color};line-height:1;">${k.val}</div>
+        <div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">${k.label}</div>
+        <div style="font-size:0.68rem;color:#64748b;margin-top:2px;">${k.sub}</div>
+        <div style="position:absolute;bottom:0;left:0;width:${Math.round(k.val/k.total*100)}%;height:3px;background:${k.color};border-radius:0 0 0 12px;opacity:0.7;"></div>
+      </div>`).join('');
+  }
+
+  // ---- Filtro de técnicos ----
+  const selTec = document.getElementById('filtEntregTec');
+  if (selTec && selTec.options.length <= 1) {
+    const tecnicos = [...new Set(DATA.map(r=>r.tecnico).filter(Boolean))].sort();
+    tecnicos.forEach(t => {
+      const op = document.createElement('option');
+      op.value = t; op.textContent = t;
+      selTec.appendChild(op);
+    });
+  }
+
+  // ---- Filtrar datos ----
+  const tecFiltro    = document.getElementById('filtEntregTec')?.value || '';
+  const estadoFiltro = document.getElementById('filtEntregEstado')?.value ?? '100';
+
+  let rows = DATA.filter(r => {
+    const e = r.entregables || {};
+    if (tecFiltro && r.tecnico !== tecFiltro) return false;
+    if (estadoFiltro === '100')     return e.acta && e.guia && e.informe;
+    if (estadoFiltro === 'acta')    return !e.acta;
+    if (estadoFiltro === 'guia')    return !e.guia;
+    if (estadoFiltro === 'informe') return !e.informe;
+    return true;
+  });
+
+  // Ordenar: primero 100%, luego por % descendente
+  rows.sort((a,b) => {
+    const pA = [a.entregables?.acta,a.entregables?.guia,a.entregables?.informe].filter(Boolean).length;
+    const pB = [b.entregables?.acta,b.entregables?.guia,b.entregables?.informe].filter(Boolean).length;
+    return pB - pA;
+  });
+
+  // ---- Contador ----
+  const cont = document.getElementById('entregables-contador');
+  if (cont) cont.textContent = `${rows.length} de ${DATA.length} registros`;
+
+  // ---- Renderizar tabla ----
+  const tbody = document.getElementById('tbody-entregables');
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty">No hay registros con este filtro.</td></tr>`;
+    return;
+  }
+
+  const tick  = v => v ? `<span style="color:#22c55e;font-size:1rem;">✅</span>` : `<span style="color:#ef4444;font-size:1rem;">❌</span>`;
+  const estadoColors = {COMPLETADO:'#22c55e',PENDIENTE:'#fbbf24','EN PROCESO':'#a78bfa',VENCIDO:'#f87171',STANDBY:'#39ff14'};
+
+  tbody.innerHTML = rows.map(r => {
+    const e    = r.entregables || {};
+    const done = [e.acta,e.guia,e.informe].filter(Boolean).length;
+    const pct  = Math.round(done/3*100);
+    const col  = pct===100 ? '#22c55e' : pct>0 ? '#f59e0b' : '#ef4444';
+    const ec   = estadoColors[r.estado] || '#94a3b8';
+    const tc   = tecColor(r.tecnico);
+    const tIni = r.tecnico ? r.tecnico.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() : '?';
+
+    return `<tr onclick="abrirDetalle('${r.oit}')" style="cursor:pointer;" title="Abrir detalle">
+      <td><strong>${r.oit}</strong></td>
+      <td style="font-size:0.8rem;">${r.cliente||'-'}</td>
+      <td>${r.distrito||'-'}</td>
+      <td>${r.departamento||'-'}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${tc};color:#fff;font-size:0.6rem;font-weight:800;flex-shrink:0;">${tIni}</span>
+          <span style="color:${tc};font-weight:600;font-size:0.8rem;">${r.tecnico||'Sin asignar'}</span>
+        </div>
+      </td>
+      <td style="text-align:center;">${tick(e.acta)}</td>
+      <td style="text-align:center;">${tick(e.guia)}</td>
+      <td style="text-align:center;">${tick(e.informe)}</td>
+      <td style="text-align:center;">
+        <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+          <div style="width:50px;height:6px;background:#1a2533;border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:0.75rem;color:${col};font-weight:700;">${pct}%</span>
+        </div>
+      </td>
+      <td><span style="background:${ec}22;color:${ec};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:700;border:1px solid ${ec}44;">${r.estado}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+
 const LOG_FELIC_KEY = 'spsa_log_felicitaciones';
 
 function registrarLogFelicitacion(entry) {
@@ -1667,7 +1823,9 @@ function initData() {
     renderAlertas();
     renderTecnicos();
     if (firstLoadData) { renderFiltroTecnico(); firstLoadData=false; }
-    renderLogFelicitaciones(); // actualizar log de OITs con 100% cada vez que llegan datos
+    renderLogFelicitaciones();
+    // Actualizar pestaña Entregables si está activa
+    if (document.getElementById('tab-entregables')?.style.display !== 'none') renderEntregablesTab();
   }, err => {
     console.error('Error escuchando trabajos:', err);
     setSyncStatus('🔴 Error de sincronización', '#fca5a5');
@@ -2286,6 +2444,7 @@ function setTab(tab, el) {
   if (tab==='programaciones') renderProgramaciones();
   if (tab==='notif' && puedeVerAuditoria()) renderAuditoria();
   if (tab==='notif') renderLogFelicitaciones();
+  if (tab==='entregables') renderEntregablesTab();
   if (tab==='usuarios') { cargarUsuarios(); renderUsuarios(); }
 }
 
