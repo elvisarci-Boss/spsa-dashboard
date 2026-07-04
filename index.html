@@ -1279,23 +1279,26 @@ function renderEntregablesTab() {
   const faltaInforme = completadas.filter(r => { const e=r.entregables||{}; return !e.informe; });
 
   const kpiData = [
-    { label:'100% Completos',   val: completos100.length, total, color:'#22c55e', bg:'#064e3b', icon:'🏆', sub:`de ${total} OITs` },
-    { label:'OITs Completadas', val: completadas.length,  total, color:'#34d399', bg:'#065f46', icon:'✅', sub:'estado COMPLETADO' },
-    { label:'Faltan Actas',     val: faltaActa.length,    total: completadas.length, color:'#f87171', bg:'#7f1d1d', icon:'📄', sub:`en OITs completadas` },
-    { label:'Faltan Guías',     val: faltaGuia.length,    total: completadas.length, color:'#fbbf24', bg:'#78350f', icon:'📋', sub:`en OITs completadas` },
-    { label:'Faltan Informes',  val: faltaInforme.length, total: completadas.length, color:'#c4b5fd', bg:'#4c1d95', icon:'📝', sub:`en OITs completadas` },
+    { label:'100% Completos',   val: completos100.length, total,                    color:'#22c55e', bg:'#064e3b', icon:'🏆', sub:`de ${total} OITs totales` },
+    { label:'OITs Completadas', val: completadas.length,  total,                    color:'#34d399', bg:'#065f46', icon:'✅', sub:`de ${total} OITs totales` },
+    { label:'Faltan Actas',     val: faltaActa.length,    total: completadas.length, color:'#f87171', bg:'#7f1d1d', icon:'📄', sub:`de ${completadas.length} completadas` },
+    { label:'Faltan Guías',     val: faltaGuia.length,    total: completadas.length, color:'#fbbf24', bg:'#78350f', icon:'📋', sub:`de ${completadas.length} completadas` },
+    { label:'Faltan Informes',  val: faltaInforme.length, total: completadas.length, color:'#c4b5fd', bg:'#4c1d95', icon:'📝', sub:`de ${completadas.length} completadas` },
   ];
 
   const kpiCont = document.getElementById('entregables-kpis');
   if (kpiCont) {
-    kpiCont.innerHTML = kpiData.map(k => `
+    kpiCont.innerHTML = kpiData.map(k => {
+      const barPct = k.total > 0 ? Math.round(k.val / k.total * 100) : 0;
+      return `
       <div style="background:${k.bg};border:1px solid ${k.color}44;border-radius:12px;padding:14px 18px;min-width:140px;flex:1;position:relative;overflow:hidden;">
         <div style="font-size:1.6rem;margin-bottom:4px;">${k.icon}</div>
-        <div style="font-size:1.6rem;font-weight:900;color:${k.color};line-height:1;">${k.val}</div>
+        <div style="font-size:1.8rem;font-weight:900;color:${k.color};line-height:1;">${k.val}</div>
         <div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">${k.label}</div>
         <div style="font-size:0.68rem;color:#64748b;margin-top:2px;">${k.sub}</div>
-        <div style="position:absolute;bottom:0;left:0;width:${Math.round(k.val/k.total*100)}%;height:3px;background:${k.color};border-radius:0 0 0 12px;opacity:0.7;"></div>
-      </div>`).join('');
+        <div style="position:absolute;bottom:0;left:0;width:${barPct}%;height:3px;background:${k.color};opacity:0.7;transition:width 0.5s;"></div>
+      </div>`;
+    }).join('');
   }
 
   // ---- Filtro de técnicos ----
