@@ -1560,7 +1560,7 @@ async function enviarFelicitacionesPendientes(btn) {
   renderLogFelicitaciones();
 }
 
-
+async function reenviarFelicitacion(oit, btn) {
   if (!APPS_SCRIPT_URL) { alert('Apps Script no configurado'); return; }
   const r = DATA.find(d => d.oit === oit);
   const t = TECNICOS.find(x => x.nombre === r?.tecnico);
