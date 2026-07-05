@@ -593,7 +593,8 @@
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
         <h3 style="font-size:0.95rem; color:#fde68a;">🏆 OITs con 100% de entregables completados</h3>
         <span style="font-size:0.75rem; color:#64748b;">Registro de notificaciones de felicitación enviadas al técnico</span>
-        <button class="btn btn-gray" style="margin-left:auto; font-size:0.75rem;" onclick="renderLogFelicitaciones()">🔄 Actualizar</button>
+        <button class="btn btn-green" style="margin-left:auto; font-size:0.75rem;" onclick="enviarFelicitacionesPendientes(this)">📧 Enviar pendientes</button>
+        <button class="btn btn-gray" style="font-size:0.75rem;" onclick="renderLogFelicitaciones()">🔄 Actualizar</button>
       </div>
       <div id="log-felicitaciones">
         <div style="color:#64748b; font-size:0.8rem; padding:12px;">Aún no hay OITs con 100% de entregables completados.</div>
@@ -1463,7 +1464,103 @@ function renderLogFelicitaciones() {
   }).join('');
 }
 
-async function reenviarFelicitacion(oit, btn) {
+async function enviarFelicitacionesPendientes(btn) {
+  if (!APPS_SCRIPT_URL) {
+    alert('Apps Script no configurado. Ve a Notificaciones → Configurar Apps Script primero.');
+    return;
+  }
+
+  // OITs con 100% que NO tienen registro de envío
+  const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
+  const logMap = {};
+  logs.forEach(l => { logMap[l.oit] = l; });
+
+  const pendientes = DATA.filter(r => {
+    const e = r.entregables || {};
+    if (!(e.acta && e.guia && e.informe)) return false; // no tiene 100%
+    const yaEnviado = logMap[r.oit]?.correoEnviado || localStorage.getItem(`felic_enviado_${r.oit}`);
+    return !yaEnviado; // solo los que NO se han enviado
+  });
+
+  if (!pendientes.length) {
+    alert('✅ No hay correos de felicitación pendientes. Todos ya fueron enviados.');
+    return;
+  }
+
+  const confirmar = confirm(
+    `Se enviarán correos de felicitación a ${pendientes.length} técnico(s) con OITs al 100% sin notificación:\n\n` +
+    pendientes.slice(0, 8).map(r => `• OIT ${r.oit} — ${r.tecnico || 'Sin asignar'}`).join('\n') +
+    (pendientes.length > 8 ? `\n... y ${pendientes.length - 8} más` : '') +
+    '\n\n¿Confirmas el envío?'
+  );
+  if (!confirmar) return;
+
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  let enviados = 0;
+  let errores = 0;
+
+  for (const r of pendientes) {
+    const t = TECNICOS.find(x => x.nombre === r.tecnico);
+    if (!t || !t.email) { errores++; continue; }
+
+    btn.textContent = `⏳ Enviando ${enviados + 1} de ${pendientes.length}...`;
+
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({
+          accion:       'felicitar',
+          oit:          r.oit,
+          fecha:        r.fecha,
+          tecnico:      t.nombre,
+          tecnicoEmail: t.email,
+          distrito:     r.distrito,
+          cliente:      r.cliente,
+          direccion:    r.direccion,
+          horario:      r.horario || '—',
+          bw:           r.bw || '—',
+          cambio_cpe:   r.cambio_cpe || '—'
+        })
+      });
+      const raw = await res.text();
+      let json;
+      try { json = JSON.parse(raw); } catch { json = {ok: false, error: raw}; }
+
+      if (json.ok) {
+        enviados++;
+        localStorage.setItem(`felic_enviado_${r.oit}`, '1');
+        registrarLogFelicitacion({
+          oit: r.oit,
+          tecnico: t.nombre,
+          email: t.email,
+          correoEnviado: true,
+          correoMsg: `Enviado a ${t.email}`,
+          fecha: peruFechaHoraStr()
+        });
+      } else {
+        errores++;
+        console.error(`Error enviando OIT ${r.oit}:`, json.error);
+      }
+    } catch(e) {
+      errores++;
+      console.error(`Error de red OIT ${r.oit}:`, e);
+    }
+
+    // Pequeña pausa entre envíos para no saturar Apps Script
+    await new Promise(res => setTimeout(res, 800));
+  }
+
+  btn.disabled = false;
+  btn.textContent = textoOriginal;
+
+  const resumen = `✅ Enviados: ${enviados}\n❌ Errores: ${errores}${errores > 0 ? ' (ver consola para detalles)' : ''}`;
+  alert(resumen);
+  renderLogFelicitaciones();
+}
+
+
   if (!APPS_SCRIPT_URL) { alert('Apps Script no configurado'); return; }
   const r = DATA.find(d => d.oit === oit);
   const t = TECNICOS.find(x => x.nombre === r?.tecnico);
