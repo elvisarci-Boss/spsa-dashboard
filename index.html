@@ -1418,18 +1418,67 @@ function renderEntregablesTab() {
         </div>
       </td>
       <td><span style="background:${ec}22;color:${ec};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:700;border:1px solid ${ec}44;">${r.estado}</span></td>
-      <td onclick="event.stopPropagation()">
-        <div style="background:${statusBg};color:${statusColor};padding:4px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;border:1px solid ${statusColor}33;">
+      <td onclick="event.stopPropagation()" style="min-width:220px;vertical-align:top;padding:6px 8px;">
+        <!-- Estado automático -->
+        <div style="background:${statusBg};color:${statusColor};padding:3px 7px;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid ${statusColor}33;margin-bottom:6px;">
           ${statusTxt}
         </div>
         ${btnRecordatorio}
+        <!-- Historial de comentarios -->
+        ${(r.statusEntregable||'') ? `<div style="background:#0d1520;border:1px solid #1e3a5f;border-radius:5px;padding:5px 7px;font-size:0.68rem;color:#94a3b8;max-height:70px;overflow-y:auto;margin-bottom:5px;white-space:pre-wrap;">${r.statusEntregable}</div>` : ''}
+        <!-- Campo para nuevo comentario -->
+        <div style="display:flex;gap:4px;align-items:flex-start;">
+          <textarea id="se_${r.oit}" placeholder="Agregar comentario..." rows="2"
+            style="flex:1;background:#0f1923;border:1px solid #1e3a5f;color:#e0e6ef;padding:4px 6px;border-radius:5px;font-size:0.7rem;resize:none;font-family:inherit;"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();guardarStatusEntregable('${r.oit}')}"></textarea>
+          <button class="btn btn-blue" style="padding:3px 7px;font-size:0.68rem;flex-shrink:0;"
+            onclick="guardarStatusEntregable('${r.oit}')">💾</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
 }
 
 
-// ===== RECORDATORIO DE INFORME PENDIENTE =====
+// ===== STATUS / COMENTARIO DE ENTREGABLES =====
+async function guardarStatusEntregable(oit) {
+  const textarea = document.getElementById('se_' + oit);
+  if (!textarea) return;
+  const texto = textarea.value.trim();
+  if (!texto) return;
+
+  const idx = DATA.findIndex(d => d.oit === oit);
+  if (idx < 0) return;
+
+  const ahora  = peruFechaHoraStr();
+  const entrada = `(${ahora}) ${texto}`;
+  const previo  = DATA[idx].statusEntregable || '';
+  const nuevo   = entrada + (previo ? '\n' + previo : '');
+
+  DATA[idx].statusEntregable = nuevo;
+
+  // Guardar en Firebase
+  try {
+    if (firebaseOK && db) {
+      await db.collection('trabajos').doc(oit).set(
+        { statusEntregable: nuevo },
+        { merge: true }
+      );
+    }
+    // También en localStorage como respaldo
+    const saved = JSON.parse(localStorage.getItem('spsa_status_entregable') || '{}');
+    saved[oit]  = nuevo;
+    localStorage.setItem('spsa_status_entregable', JSON.stringify(saved));
+  } catch(e) {
+    console.error('Error guardando status entregable:', e);
+  }
+
+  textarea.value = '';
+  registrarAuditoria(`Agregó comentario de entregable en OIT ${oit}`, oit);
+  renderEntregablesTab(); // refrescar tabla
+}
+
+
 async function enviarRecordatorioInforme(oit, btn) {
   const r = DATA.find(d => d.oit === oit);
   const t = TECNICOS.find(x => x.nombre === r?.tecnico);
@@ -1967,6 +2016,7 @@ function loadLocal() {
     estado: savedEstados[d.oit]||d.estado,
     tecnico: savedTecAsig[d.oit]!==undefined ? savedTecAsig[d.oit] : d.tecnico,
     nota: savedNotas[d.oit]||'',
+    statusEntregable: JSON.parse(localStorage.getItem('spsa_status_entregable')||'{}')[d.oit] || '',
     fecha: savedFechas[d.oit] || d.fecha,
     entregables: savedEntreg[d.oit]||{acta:false,guia:false,informe:false},
     guiaInst: savedGuiaInst[d.oit]||{numero:'',serie:''},
@@ -2034,6 +2084,7 @@ function initData() {
       estado: overrides[d.oit]?.estado ?? d.estado,
       tecnico: overrides[d.oit]?.tecnico ?? (d.tecnico||''),
       nota: overrides[d.oit]?.nota ?? '',
+      statusEntregable: overrides[d.oit]?.statusEntregable ?? '',
       fecha: overrides[d.oit]?.fecha ?? d.fecha,
       entregables: overrides[d.oit]?.entregables ?? {acta:false,guia:false,informe:false},
       guiaInst: overrides[d.oit]?.guiaInst ?? {numero:'',serie:''},
