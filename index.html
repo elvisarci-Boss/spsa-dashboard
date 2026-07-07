@@ -683,6 +683,7 @@
             <th style="text-align:center;">Informe</th>
             <th style="text-align:center;">% Avance</th>
             <th>Estado OIT</th>
+            <th style="min-width:180px;">Status / Comentario</th>
           </tr>
         </thead>
         <tbody id="tbody-entregables"></tbody>
@@ -1352,7 +1353,7 @@ function renderEntregablesTab() {
   if (!tbody) return;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty">No hay registros con este filtro.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">No hay registros con este filtro.</td></tr>`;
     return;
   }
 
@@ -1367,6 +1368,32 @@ function renderEntregablesTab() {
     const ec   = estadoColors[r.estado] || '#94a3b8';
     const tc   = tecColor(r.tecnico);
     const tIni = r.tecnico ? r.tecnico.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() : '?';
+
+    // Status / comentario automático según entregables pendientes
+    let statusTxt = '';
+    let statusColor = '#94a3b8';
+    let statusBg = '#1e293b';
+    let btnRecordatorio = '';
+
+    if (pct === 100) {
+      statusTxt = '✅ Todos los entregables completados';
+      statusColor = '#22c55e'; statusBg = '#064e3b';
+    } else {
+      const faltantes = [];
+      if (!e.acta)    faltantes.push('Acta');
+      if (!e.guia)    faltantes.push('Guía');
+      if (!e.informe) faltantes.push('Informe');
+      statusTxt = `⚠️ Pendiente: ${faltantes.join(', ')}`;
+      statusColor = '#fbbf24'; statusBg = '#1a1200';
+
+      // Botón de recordatorio solo si estado=COMPLETADO y falta el informe
+      if (r.estado === 'COMPLETADO' && !e.informe && r.tecnico) {
+        btnRecordatorio = `<button class="btn btn-blue" style="margin-top:5px;padding:3px 8px;font-size:0.68rem;display:block;"
+          onclick="event.stopPropagation(); enviarRecordatorioInforme('${r.oit}', this)">
+          📧 Recordar informe
+        </button>`;
+      }
+    }
 
     return `<tr onclick="abrirDetalle('${r.oit}')" style="cursor:pointer;" title="Abrir detalle">
       <td><strong>${r.oit}</strong></td>
@@ -1391,12 +1418,94 @@ function renderEntregablesTab() {
         </div>
       </td>
       <td><span style="background:${ec}22;color:${ec};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:700;border:1px solid ${ec}44;">${r.estado}</span></td>
+      <td onclick="event.stopPropagation()">
+        <div style="background:${statusBg};color:${statusColor};padding:4px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;border:1px solid ${statusColor}33;">
+          ${statusTxt}
+        </div>
+        ${btnRecordatorio}
+      </td>
     </tr>`;
   }).join('');
 }
 
 
-const LOG_FELIC_KEY = 'spsa_log_felicitaciones';
+// ===== RECORDATORIO DE INFORME PENDIENTE =====
+async function enviarRecordatorioInforme(oit, btn) {
+  const r = DATA.find(d => d.oit === oit);
+  const t = TECNICOS.find(x => x.nombre === r?.tecnico);
+  if (!t) { alert('Técnico no encontrado.'); return; }
+  if (!t.email && !t.cel) { alert('El técnico no tiene correo ni celular registrado.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+
+  let correoOk = false;
+  let whatsOk  = false;
+
+  // --- Correo vía Apps Script ---
+  if (t.email && APPS_SCRIPT_URL) {
+    try {
+      const res  = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify({
+          accion:       'recordatorio',
+          oit:          r.oit,
+          fecha:        r.fecha,
+          tecnico:      t.nombre,
+          tecnicoEmail: t.email,
+          distrito:     r.distrito,
+          cliente:      r.cliente,
+          direccion:    r.direccion,
+          horario:      r.horario || '—',
+          bw:           r.bw     || '—',
+          cambio_cpe:   r.cambio_cpe || '—'
+        })
+      });
+      const raw  = await res.text();
+      const json = JSON.parse(raw);
+      correoOk   = json.ok;
+    } catch(e) { console.error('Error recordatorio correo:', e); }
+  }
+
+  // --- WhatsApp vía CallMeBot ---
+  if (t.cel && t.wa_key) {
+    const msg = encodeURIComponent(
+      `Hola ${t.nombre}, te recordamos que tienes pendiente el INFORME de la OIT ${r.oit} (${r.distrito} - ${r.cliente}). ` +
+      `Fecha: ${r.fecha} | Horario: ${r.horario||'—'}. Por favor envía el informe a la brevedad. - SPSA Dashboard`
+    );
+    const num = t.cel.replace(/[^0-9]/g,'');
+    fetch(`https://api.callmebot.com/whatsapp.php?phone=${num}&text=${msg}&apikey=${t.wa_key}`)
+      .then(() => { whatsOk = true; })
+      .catch(e => console.error('Error WA recordatorio:', e));
+    whatsOk = true;
+  }
+
+  // Registrar en notas de la OIT
+  const idx = DATA.findIndex(d => d.oit === oit);
+  if (idx >= 0) {
+    const notaActual = DATA[idx].nota || '';
+    const nuevaNota  = `(${peruFechaHoraStr()}) Recordatorio de informe pendiente enviado al técnico ${t.nombre}`;
+    const notaFinal  = nuevaNota + (notaActual ? '\n' + notaActual : '');
+    DATA[idx].nota   = notaFinal;
+    persistTrabajo(oit, {nota: notaFinal});
+  }
+
+  btn.disabled  = false;
+  const resultados = [];
+  if (correoOk) resultados.push('✅ Correo enviado a ' + t.email);
+  else if (t.email) resultados.push('❌ Error enviando correo');
+  else resultados.push('⚪ Sin email registrado');
+  if (t.wa_key) resultados.push(whatsOk ? '✅ WhatsApp enviado' : '❌ Error WhatsApp');
+  else if (t.cel) resultados.push('⚪ Sin API Key de WhatsApp (abre WhatsApp Web)');
+
+  btn.textContent = correoOk ? '✅ Recordatorio enviado' : '📧 Recordar informe';
+  btn.style.background = correoOk ? '#064e3b' : '';
+  alert('Recordatorio de informe pendiente:\n\n' + resultados.join('\n'));
+  renderEntregablesTab();
+}
+
+
 
 function registrarLogFelicitacion(entry) {
   const logs = JSON.parse(localStorage.getItem(LOG_FELIC_KEY) || '[]');
