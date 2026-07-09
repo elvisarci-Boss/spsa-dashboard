@@ -786,6 +786,27 @@
 </div>
 
 <!-- MODAL ALERTAS -->
+<!-- MODAL STATUS ENTREGABLE — comentarios por OIT -->
+<div class="modal-bg" id="modalStatusEntreg" onclick="if(event.target===this){cerrarModal('modalStatusEntreg')}">
+  <div class="modal" style="max-width:500px;">
+    <h2 id="mse-title" style="font-size:1rem;margin-bottom:4px;">💬 Comentarios — OIT</h2>
+    <p id="mse-info" style="font-size:0.78rem;color:#64748b;margin-bottom:14px;"></p>
+    <!-- Historial -->
+    <div id="mse-historial" style="background:#0d1520;border:1px solid #1e3a5f;border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;font-size:0.78rem;color:#94a3b8;white-space:pre-wrap;margin-bottom:14px;line-height:1.6;">
+      <span style="color:#475569;font-style:italic;">Sin comentarios aún.</span>
+    </div>
+    <!-- Nuevo comentario -->
+    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:5px;">✏️ Agregar nuevo comentario:</label>
+    <textarea id="mse-nueva" rows="3" placeholder="Escribe el comentario aquí..."
+      style="width:100%;background:#0f1923;border:1px solid #1e3a5f;color:#e0e6ef;padding:8px 10px;border-radius:6px;font-size:0.83rem;resize:vertical;font-family:inherit;box-sizing:border-box;"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();guardarStatusEntregableModal()}"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button class="btn btn-gray" onclick="cerrarModal('modalStatusEntreg')">Cerrar</button>
+      <button class="btn btn-green" onclick="guardarStatusEntregableModal()">💾 Guardar comentario</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modalAlerta">
   <div class="modal">
     <h2>🔔 Resumen de Alertas</h2>
@@ -1418,34 +1439,60 @@ function renderEntregablesTab() {
         </div>
       </td>
       <td><span style="background:${ec}22;color:${ec};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:700;border:1px solid ${ec}44;">${r.estado}</span></td>
-      <td onclick="event.stopPropagation()" style="min-width:220px;vertical-align:top;padding:6px 8px;">
-        <!-- Estado automático -->
-        <div style="background:${statusBg};color:${statusColor};padding:3px 7px;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid ${statusColor}33;margin-bottom:6px;">
-          ${statusTxt}
-        </div>
-        ${btnRecordatorio}
-        <!-- Historial de comentarios -->
-        ${(r.statusEntregable||'') ? `<div style="background:#0d1520;border:1px solid #1e3a5f;border-radius:5px;padding:5px 7px;font-size:0.68rem;color:#94a3b8;max-height:70px;overflow-y:auto;margin-bottom:5px;white-space:pre-wrap;">${r.statusEntregable}</div>` : ''}
-        <!-- Campo para nuevo comentario -->
-        <div style="display:flex;gap:4px;align-items:flex-start;">
-          <textarea id="se_${r.oit}" placeholder="Agregar comentario..." rows="2"
-            style="flex:1;background:#0f1923;border:1px solid #1e3a5f;color:#e0e6ef;padding:4px 6px;border-radius:5px;font-size:0.7rem;resize:none;font-family:inherit;"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();guardarStatusEntregable('${r.oit}')}"></textarea>
-          <button class="btn btn-blue" style="padding:3px 7px;font-size:0.68rem;flex-shrink:0;"
-            onclick="guardarStatusEntregable('${r.oit}')">💾</button>
-        </div>
+      <td onclick="event.stopPropagation()" style="text-align:center;white-space:nowrap;padding:6px 8px;">
+        ${pct < 100 && r.estado === 'COMPLETADO' && !e.informe
+          ? `<button class="btn btn-blue" style="padding:2px 7px;font-size:0.7rem;margin-right:4px;" onclick="enviarRecordatorioInforme('${r.oit}',this)" title="Enviar recordatorio de informe">📧</button>`
+          : ''}
+        ${pct < 100
+          ? `<span style="background:#1a1200;color:#fbbf24;padding:2px 7px;border-radius:8px;font-size:0.68rem;font-weight:700;border:1px solid #fbbf2444;">⚠️ Pendiente</span>`
+          : ''}
+        <button class="btn btn-gray" style="padding:2px 7px;font-size:0.75rem;margin-left:4px;position:relative;"
+          onclick="abrirStatusModal('${r.oit}')"
+          title="${r.statusEntregable ? 'Ver/agregar comentarios' : 'Agregar comentario'}">
+          💬${r.statusEntregable ? `<span style="position:absolute;top:-4px;right:-4px;background:#2563eb;color:#fff;border-radius:50%;width:14px;height:14px;font-size:0.55rem;display:flex;align-items:center;justify-content:center;">${(r.statusEntregable.match(/\n/g)||[]).length+1}</span>` : ''}
+        </button>
       </td>
     </tr>`;
   }).join('');
 }
 
 
+// ===== MODAL STATUS / COMENTARIO ENTREGABLE =====
+let _mseOit = null;
+
+function abrirStatusModal(oit) {
+  _mseOit = oit;
+  const r = DATA.find(d => d.oit === oit);
+  if (!r) return;
+  const e = r.entregables || {};
+  const done = [e.acta, e.guia, e.informe].filter(Boolean).length;
+  const pct  = Math.round(done/3*100);
+  document.getElementById('mse-title').textContent = `💬 Comentarios — OIT ${oit}`;
+  document.getElementById('mse-info').textContent  =
+    `${r.cliente} · ${r.distrito} · Técnico: ${r.tecnico||'Sin asignar'} · Entregables: ${pct}%`;
+  const hist = r.statusEntregable || '';
+  const histEl = document.getElementById('mse-historial');
+  histEl.innerHTML = hist
+    ? hist.split('\n').map(l => {
+        const m = l.match(/^\((.+?)\)\s(.+)$/);
+        if (m) return `<div style="border-bottom:1px solid #1e3a5f;padding:5px 0;"><span style="color:#2563eb;font-size:0.7rem;">${m[1]}</span><br><span style="color:#e2e8f0;">${m[2]}</span></div>`;
+        return `<div style="padding:4px 0;color:#e2e8f0;">${l}</div>`;
+      }).join('')
+    : '<span style="color:#475569;font-style:italic;">Sin comentarios aún.</span>';
+  document.getElementById('mse-nueva').value = '';
+  document.getElementById('modalStatusEntreg').classList.add('open');
+  setTimeout(() => document.getElementById('mse-nueva').focus(), 100);
+}
+
+async function guardarStatusEntregableModal() {
+  const texto = document.getElementById('mse-nueva').value.trim();
+  if (!texto || !_mseOit) return;
+  await guardarStatusEntregable(_mseOit, texto);
+  abrirStatusModal(_mseOit); // refrescar el modal
+}
+
 // ===== STATUS / COMENTARIO DE ENTREGABLES =====
-async function guardarStatusEntregable(oit) {
-  const textarea = document.getElementById('se_' + oit);
-  if (!textarea) return;
-  const texto = textarea.value.trim();
-  if (!texto) return;
+async function guardarStatusEntregable(oit, texto) {
 
   const idx = DATA.findIndex(d => d.oit === oit);
   if (idx < 0) return;
@@ -1473,7 +1520,6 @@ async function guardarStatusEntregable(oit) {
     console.error('Error guardando status entregable:', e);
   }
 
-  textarea.value = '';
   registrarAuditoria(`Agregó comentario de entregable en OIT ${oit}`, oit);
   renderEntregablesTab(); // refrescar tabla
 }
