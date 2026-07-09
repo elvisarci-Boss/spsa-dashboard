@@ -1457,7 +1457,118 @@ function renderEntregablesTab() {
 }
 
 
-// ===== MODAL STATUS / COMENTARIO ENTREGABLE =====
+// ===== VERIFICACIÓN AUTOMÁTICA: ENTREGABLES PENDIENTES > 24H =====
+const RECORDATORIO_24H_KEY = 'spsa_recordatorio_24h'; // evitar enviar múltiples veces el mismo día
+
+async function verificarEntregablesPendientes24h() {
+  if (!APPS_SCRIPT_URL) return; // no configurado
+  if (!esAdmin() && !esSupervisor()) return; // solo admin/supervisor activan esto
+
+  const ahora      = new Date();
+  const hoy        = ahora.toISOString().slice(0,10); // YYYY-MM-DD
+  const enviados   = JSON.parse(localStorage.getItem(RECORDATORIO_24H_KEY) || '{}');
+
+  // OITs COMPLETADAS con entregables pendientes Y más de 24h desde que se completaron
+  const pendientes = DATA.filter(r => {
+    if (r.estado !== 'COMPLETADO') return false;
+    const e = r.entregables || {};
+    if (e.acta && e.guia && e.informe) return false; // ya tiene todo
+    if (!r.tecnico) return false; // sin técnico
+    // Verificar 24h
+    if (!r.fechaCompletado) {
+      // Si no tiene timestamp, usar fecha de migración como referencia aproximada
+      const diasDesde = diasHasta(r.fecha);
+      if (diasDesde > -1) return false; // menos de 1 día
+    } else {
+      const msDesde = ahora - new Date(r.fechaCompletado);
+      if (msDesde < 24 * 60 * 60 * 1000) return false; // menos de 24h
+    }
+    // Verificar que no se haya enviado recordatorio hoy
+    const claveHoy = `${r.oit}_${hoy}`;
+    if (enviados[claveHoy]) return false;
+    return true;
+  });
+
+  if (!pendientes.length) return;
+
+  console.log(`⏰ ${pendientes.length} OITs con entregables pendientes > 24h — enviando recordatorios...`);
+
+  for (const r of pendientes) {
+    const t = TECNICOS.find(x => x.nombre === r.tecnico);
+    if (!t) continue;
+
+    const e = r.entregables || {};
+    const faltantes = [];
+    if (!e.acta)    faltantes.push('Acta');
+    if (!e.guia)    faltantes.push('Guía');
+    if (!e.informe) faltantes.push('Informe');
+
+    try {
+      if (t.email && APPS_SCRIPT_URL) {
+        await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain'},
+          body: JSON.stringify({
+            accion:          'recordatorio24h',
+            oit:             r.oit,
+            fecha:           r.fecha,
+            tecnico:         t.nombre,
+            tecnicoEmail:    t.email,
+            distrito:        r.distrito,
+            cliente:         r.cliente,
+            direccion:       r.direccion,
+            horario:         r.horario || '—',
+            entregablesFaltantes: faltantes.join(', ')
+          })
+        });
+      }
+
+      // WhatsApp si tiene API Key
+      if (t.cel && t.wa_key) {
+        const msg = encodeURIComponent(
+          `Hola ${t.nombre}, han pasado más de 24 horas desde que la OIT ${r.oit} ` +
+          `(${r.distrito} - ${r.cliente}) fue marcada como COMPLETADA.\n\n` +
+          `Aún tienes pendiente: *${faltantes.join(', ')}*.\n\n` +
+          `Por favor completa los entregables a la brevedad. - SPSA Dashboard`
+        );
+        const num = t.cel.replace(/[^0-9]/g,'');
+        fetch(`https://api.callmebot.com/whatsapp.php?phone=${num}&text=${msg}&apikey=${t.wa_key}`)
+          .catch(e => console.error('WA recordatorio 24h:', e));
+      }
+
+      // Marcar como enviado hoy para esta OIT
+      const claveHoy = `${r.oit}_${hoy}`;
+      enviados[claveHoy] = peruFechaHoraStr();
+      localStorage.setItem(RECORDATORIO_24H_KEY, JSON.stringify(enviados));
+
+      // Registrar en historial de notas
+      const idx = DATA.findIndex(d => d.oit === r.oit);
+      if (idx >= 0) {
+        const nota = `(${peruFechaHoraStr()}) ⏰ Recordatorio automático (>24h): Entregables pendientes — ${faltantes.join(', ')}`;
+        const notaFinal = nota + (DATA[idx].nota ? '\n' + DATA[idx].nota : '');
+        DATA[idx].nota = notaFinal;
+        persistTrabajo(r.oit, {nota: notaFinal});
+      }
+
+      console.log(`✅ Recordatorio 24h enviado: OIT ${r.oit} → ${t.nombre} (${faltantes.join(', ')})`);
+      await new Promise(res => setTimeout(res, 1000)); // pausa entre envíos
+
+    } catch(e) {
+      console.error(`Error recordatorio 24h OIT ${r.oit}:`, e);
+    }
+  }
+
+  // Mostrar resumen discreto en el dashboard
+  if (pendientes.length > 0) {
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1a2744;border:1px solid #2563eb;border-radius:10px;padding:12px 16px;font-size:0.78rem;color:#93c5fd;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:320px;';
+    toast.innerHTML = `⏰ <strong>Recordatorios automáticos enviados</strong><br>${pendientes.length} técnico(s) notificados por entregables pendientes >24h`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
+  }
+}
+
+
 let _mseOit = null;
 
 function abrirStatusModal(oit) {
@@ -2131,6 +2242,7 @@ function initData() {
       tecnico: overrides[d.oit]?.tecnico ?? (d.tecnico||''),
       nota: overrides[d.oit]?.nota ?? '',
       statusEntregable: overrides[d.oit]?.statusEntregable ?? '',
+      fechaCompletado: overrides[d.oit]?.fechaCompletado ?? null,
       fecha: overrides[d.oit]?.fecha ?? d.fecha,
       entregables: overrides[d.oit]?.entregables ?? {acta:false,guia:false,informe:false},
       guiaInst: overrides[d.oit]?.guiaInst ?? {numero:'',serie:''},
@@ -2139,7 +2251,12 @@ function initData() {
     filtrar();
     renderAlertas();
     renderTecnicos();
-    if (firstLoadData) { renderFiltroTecnico(); firstLoadData=false; }
+    if (firstLoadData) {
+      renderFiltroTecnico();
+      firstLoadData = false;
+      // Verificar y enviar recordatorios de entregables pendientes > 24h (solo una vez al cargar)
+      setTimeout(() => verificarEntregablesPendientes24h(), 3000);
+    }
     renderLogFelicitaciones();
     // Actualizar pestaña Entregables si está activa
     if (document.getElementById('tab-entregables')?.style.display !== 'none') renderEntregablesTab();
@@ -2602,7 +2719,14 @@ function cambiarEstado(oit, estado) {
   if (!esAdmin()) { alert('Solo el Administrador puede cambiar el estado de un trabajo.'); filtrar(); return; }
   const idx = DATA.findIndex(d=>d.oit===oit);
   if (idx>=0) DATA[idx].estado = estado;
-  persistTrabajo(oit, {estado});
+  const fields = {estado};
+  // Guardar timestamp cuando se pone en COMPLETADO para el control de 24h
+  if (estado === 'COMPLETADO') {
+    const ts = new Date().toISOString();
+    fields.fechaCompletado = ts;
+    if (idx>=0) DATA[idx].fechaCompletado = ts;
+  }
+  persistTrabajo(oit, fields);
   registrarAuditoria(`Cambió el estado de OIT ${oit} a ${estado}`, oit);
   if (!firebaseOK) { filtrar(); renderTecnicos(); }
 }
