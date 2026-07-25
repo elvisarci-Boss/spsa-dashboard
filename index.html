@@ -2377,20 +2377,30 @@ async function toggleEntregable(oit, key) {
 // ===== GUIA DE ENVIO (numero guia + serie equipo) =====
 function renderGuia(oit, tipo, g) {
   g = g || {numero:'', serie:''};
-  const numFilled = g.numero ? 'filled' : '';
-  const serFilled = g.serie ? 'filled' : '';
+
+  // Si el input esta en foco (supervisor escribiendo), preservar su valor
+  // para evitar que el re-render del onSnapshot lo borre mientras escribe
+  const numId = 'guia_' + oit + '_' + tipo + '_num';
+  const serId = 'guia_' + oit + '_' + tipo + '_ser';
+  const elNum = document.getElementById(numId);
+  const elSer = document.getElementById(serId);
+  const numVal = (elNum && document.activeElement === elNum) ? elNum.value : (g.numero || '');
+  const serVal = (elSer && document.activeElement === elSer) ? elSer.value : (g.serie  || '');
+
+  const numFilled = numVal ? 'filled' : '';
+  const serFilled = serVal ? 'filled' : '';
   return `
     <div class="guia-row">
       <div class="guia-field">
         <label>N° Guía</label>
-        <input type="text" class="guia-input ${numFilled}" placeholder="G-001234" value="${g.numero||''}"
-          onchange="guardarGuia('${oit}','${tipo}','numero',this.value)" onblur="guardarGuia('${oit}','${tipo}','numero',this.value)"
+        <input id="${numId}" type="text" class="guia-input ${numFilled}" placeholder="G-001234" value="${numVal}"
+          onblur="guardarGuia('${oit}','${tipo}','numero',this.value)"
           ${!puedeEditarGuias()?'disabled':''}>
       </div>
       <div class="guia-field">
         <label>Serie equipo</label>
-        <input type="text" class="guia-input ${serFilled}" placeholder="SN-XXXXXX" value="${g.serie||''}"
-          onchange="guardarGuia('${oit}','${tipo}','serie',this.value)" onblur="guardarGuia('${oit}','${tipo}','serie',this.value)"
+        <input id="${serId}" type="text" class="guia-input ${serFilled}" placeholder="SN-XXXXXX" value="${serVal}"
+          onblur="guardarGuia('${oit}','${tipo}','serie',this.value)"
           ${!puedeEditarGuias()?'disabled':''}>
       </div>
     </div>`;
@@ -2522,7 +2532,7 @@ function renderStats(data) {
   const pend  = data.filter(d=>d.estado==='PENDIENTE').length;
   const proc  = data.filter(d=>d.estado==='EN PROCESO').length;
   const comp  = data.filter(d=>d.estado==='COMPLETADO').length;
-  const venc  = data.filter(d=>d.estado==='VENCIDO'||(diasHasta(d.fecha)<0&&d.estado!=='COMPLETADO'&&d.estado!=='STANDBY')).length;
+  const venc  = data.filter(d=>d.estado==='VENCIDO').length;
   const stby  = data.filter(d=>d.estado==='STANDBY').length;
   document.getElementById('statsBar').innerHTML = `
     <div class="stat total"><div class="stat-bg"></div><div class="stat-content"><div class="stat-num">${total}</div><div class="stat-label">TOTAL SEDES</div></div></div>
