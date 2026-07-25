@@ -1459,6 +1459,7 @@ function renderEntregablesTab() {
 
 // ===== VERIFICACIÓN AUTOMÁTICA: ENTREGABLES PENDIENTES > 24H =====
 const RECORDATORIO_24H_KEY = 'spsa_recordatorio_24h'; // evitar enviar múltiples veces el mismo día
+const LOG_FELIC_KEY = 'spsa_log_felicitaciones'; // registro de felicitaciones enviadas
 
 async function verificarEntregablesPendientes24h() {
   if (!APPS_SCRIPT_URL) return; // no configurado
@@ -2454,7 +2455,7 @@ function renderTabla(data) {
   }
   const tbody = document.getElementById('tbody');
   if (!data.length) { tbody.innerHTML = '<tr><td colspan="14" class="empty">No se encontraron registros</td></tr>'; return; }
-  tbody.innerHTML = data.map(r => {
+  tbody.innerHTML = data.map((r, idx) => {
     const dias = diasHasta(r.fecha);
     const e = r.entregables || {};
     const pct100 = e.acta && e.guia && e.informe; // 100% de entregables
@@ -2478,7 +2479,7 @@ function renderTabla(data) {
     const lockBadge = pct100 ? `<span class="row-lock-badge">🔒 Completa</span>` : '';
 
     return `<tr class="${cls}" title="${pct100 && !esAdmin() ? 'Fila bloqueada: 100% entregables completados. Solo el Administrador puede modificar.' : ''}">
-      <td>${r.n}</td>
+      <td>${idx + 1}</td>
       <td><strong>${r.oit}</strong></td>
       <td>${r.sfa}</td>
       <td><small>${cliente_short}</small></td>
@@ -2534,10 +2535,10 @@ function renderStats(data) {
 }
 
 function renderAlertas() {
-  const hoy = DATA.filter(d => diasHasta(d.fecha)===0 && d.estado!=='COMPLETADO');
-  const man = DATA.filter(d => diasHasta(d.fecha)===1 && d.estado!=='COMPLETADO');
-  const urg = DATA.filter(d => diasHasta(d.fecha)<0 && d.estado!=='COMPLETADO');
-  const prox = DATA.filter(d => diasHasta(d.fecha)>1 && diasHasta(d.fecha)<=7 && d.estado!=='COMPLETADO');
+  const hoy = DATA.filter(d => diasHasta(d.fecha)===0 && d.estado!=='COMPLETADO' && d.estado!=='STANDBY');
+  const man = DATA.filter(d => diasHasta(d.fecha)===1 && d.estado!=='COMPLETADO' && d.estado!=='STANDBY');
+  const urg = DATA.filter(d => diasHasta(d.fecha)<0  && d.estado!=='COMPLETADO' && d.estado!=='STANDBY');
+  const prox = DATA.filter(d => diasHasta(d.fecha)>1 && diasHasta(d.fecha)<=7 && d.estado!=='COMPLETADO' && d.estado!=='STANDBY');
   
   function card(r, tag, tagcls, cardcls, extra) {
     const tec = r.tecnico ? ` · 👤 ${r.tecnico}` : ' · <span style="color:#f87171">Sin técnico</span>';
@@ -2703,6 +2704,7 @@ function filtrar() {
 
   renderTabla(filtrados);
   renderStats(filtrados);
+  renderAlertas();
   document.getElementById('contadorFiltro').textContent = `${filtrados.length} de ${DATA.length} registros`;
 }
 
