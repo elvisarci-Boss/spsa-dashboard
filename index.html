@@ -3121,15 +3121,31 @@ function renderProgramaciones() {
       const tecInicial = r.tecnico ? r.tecnico.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() : '?';
       const esStandby    = r.estado === 'STANDBY';
       const esCompletado = r.estado === 'COMPLETADO';
-      const cardExtra    = (esStandby || esCompletado) ? 'position:relative;overflow:hidden;' : '';
-      const cardBg       = esStandby    ? 'background:#0a1f08;'
+      const esPendiente  = r.estado === 'PENDIENTE';
+      const esProceso    = r.estado === 'EN PROCESO';
+      const esVencido    = r.estado === 'VENCIDO';
+      const cardExtra    = 'position:relative;overflow:hidden;';
+      const cardBg       = esStandby    ? 'background:#0a1f08;box-shadow:0 0 8px #39ff1422;'
                          : esCompletado ? 'background:#022c1e;box-shadow:0 0 10px #05966944;'
+                         : esPendiente  ? 'background:#1c1200;box-shadow:0 0 8px #fbbf2422;'
+                         : esProceso    ? 'background:#120a2a;box-shadow:0 0 8px #a78bfa22;'
+                         : esVencido    ? 'background:#200808;box-shadow:0 0 10px #ef444444;'
                          : '';
       const overlay      = esStandby
-        ? '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:2.5rem;opacity:0.12;pointer-events:none;z-index:0;">&#9208;</div>'
+        ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.55;pointer-events:none;z-index:2;">&#9208;</div>'
+          + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:2.8rem;opacity:0.07;pointer-events:none;z-index:0;">&#9208;</div>'
         : esCompletado
         ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.60;pointer-events:none;z-index:2;">&#128077;</div>'
           + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-10deg);font-size:2.8rem;opacity:0.07;pointer-events:none;z-index:0;">&#9989;</div>'
+        : esPendiente
+        ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.55;pointer-events:none;z-index:2;">&#8987;</div>'
+          + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-10deg);font-size:2.8rem;opacity:0.07;pointer-events:none;z-index:0;">&#8987;</div>'
+        : esProceso
+        ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.55;pointer-events:none;z-index:2;">&#128736;</div>'
+          + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-10deg);font-size:2.8rem;opacity:0.07;pointer-events:none;z-index:0;">&#128736;</div>'
+        : esVencido
+        ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.65;pointer-events:none;z-index:2;">&#9888;</div>'
+          + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-10deg);font-size:2.8rem;opacity:0.09;pointer-events:none;z-index:0;">&#9888;</div>'
         : '';
       return `<div class="week-card" style="border-color:${col};${cardExtra}${cardBg}box-sizing:border-box;" onclick="abrirDetalle('${r.oit}')">
         ${overlay}
