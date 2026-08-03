@@ -2377,30 +2377,20 @@ async function toggleEntregable(oit, key) {
 // ===== GUIA DE ENVIO (numero guia + serie equipo) =====
 function renderGuia(oit, tipo, g) {
   g = g || {numero:'', serie:''};
-
-  // Si el input esta en foco (supervisor escribiendo), preservar su valor
-  // para evitar que el re-render del onSnapshot lo borre mientras escribe
-  const numId = 'guia_' + oit + '_' + tipo + '_num';
-  const serId = 'guia_' + oit + '_' + tipo + '_ser';
-  const elNum = document.getElementById(numId);
-  const elSer = document.getElementById(serId);
-  const numVal = (elNum && document.activeElement === elNum) ? elNum.value : (g.numero || '');
-  const serVal = (elSer && document.activeElement === elSer) ? elSer.value : (g.serie  || '');
-
-  const numFilled = numVal ? 'filled' : '';
-  const serFilled = serVal ? 'filled' : '';
+  const numFilled = g.numero ? 'filled' : '';
+  const serFilled = g.serie ? 'filled' : '';
   return `
     <div class="guia-row">
       <div class="guia-field">
         <label>N° Guía</label>
-        <input id="${numId}" type="text" class="guia-input ${numFilled}" placeholder="G-001234" value="${numVal}"
-          onblur="guardarGuia('${oit}','${tipo}','numero',this.value)"
+        <input type="text" class="guia-input ${numFilled}" placeholder="G-001234" value="${g.numero||''}"
+          onchange="guardarGuia('${oit}','${tipo}','numero',this.value)" onblur="guardarGuia('${oit}','${tipo}','numero',this.value)"
           ${!puedeEditarGuias()?'disabled':''}>
       </div>
       <div class="guia-field">
         <label>Serie equipo</label>
-        <input id="${serId}" type="text" class="guia-input ${serFilled}" placeholder="SN-XXXXXX" value="${serVal}"
-          onblur="guardarGuia('${oit}','${tipo}','serie',this.value)"
+        <input type="text" class="guia-input ${serFilled}" placeholder="SN-XXXXXX" value="${g.serie||''}"
+          onchange="guardarGuia('${oit}','${tipo}','serie',this.value)" onblur="guardarGuia('${oit}','${tipo}','serie',this.value)"
           ${!puedeEditarGuias()?'disabled':''}>
       </div>
     </div>`;
@@ -3129,14 +3119,20 @@ function renderProgramaciones() {
       const tc   = tecColor(r.tecnico);
       const tecLabel = r.tecnico ? r.tecnico.split(' ')[0] : 'Sin asignar';
       const tecInicial = r.tecnico ? r.tecnico.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase() : '?';
-      const standbyBg = r.estado==='STANDBY'
-        ? `position:relative;overflow:hidden;`
+      const esStandby    = r.estado === 'STANDBY';
+      const esCompletado = r.estado === 'COMPLETADO';
+      const cardExtra    = (esStandby || esCompletado) ? 'position:relative;overflow:hidden;' : '';
+      const cardBg       = esStandby    ? 'background:#0a1f08;'
+                         : esCompletado ? 'background:#022c1e;box-shadow:0 0 10px #05966944;'
+                         : '';
+      const overlay      = esStandby
+        ? '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:2.5rem;opacity:0.12;pointer-events:none;z-index:0;">&#9208;</div>'
+        : esCompletado
+        ? '<div style="position:absolute;top:4px;right:6px;font-size:1.4rem;opacity:0.60;pointer-events:none;z-index:2;">&#128077;</div>'
+          + '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-10deg);font-size:2.8rem;opacity:0.07;pointer-events:none;z-index:0;">&#9989;</div>'
         : '';
-      const standbyOverlay = r.estado==='STANDBY'
-        ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-15deg);font-size:2.5rem;opacity:0.12;pointer-events:none;z-index:0;">?</div>`
-        : '';
-      return `<div class="week-card" style="border-color:${col};${standbyBg}${r.estado==='STANDBY'?'background:#0a1f08;':''}box-sizing:border-box;" onclick="abrirDetalle('${r.oit}')">
-        ${standbyOverlay}
+      return `<div class="week-card" style="border-color:${col};${cardExtra}${cardBg}box-sizing:border-box;" onclick="abrirDetalle('${r.oit}')">
+        ${overlay}
         <div style="position:relative;z-index:1;">
           <div class="wc-oit">${r.oit}</div>
           <div class="wc-dist" title="${r.distrito}">${r.distrito}</div>
